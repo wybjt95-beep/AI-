@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI分镜拆解助手 - 最终版</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <section class="login-page" id="loginPage">
+        <div class="login-copy">
+          <span class="brand-mark">镜</span>
+          <p class="eyebrow">Storyboard Lab</p>
+          <h2>AI分镜拆解助手</h2>
+          <p>帮助你快速拆解分镜脚本。</p>
+          <div class="login-points">
+            <span>剧本分析</span>
+            <span>分镜确认</span>
+            <span>分镜图参考</span>
+          </div>
+        </div>
+        <form class="login-card" id="authForm">
+          <div>
+            <p class="eyebrow">Account</p>
+            <h3>登录 / 注册</h3>
+          </div>
+          <label><span>昵称</span><input id="authName" placeholder="注册时填写，可选" /></label>
+          <label><span>邮箱</span><input id="authEmail" type="email" placeholder="you@example.com" autocomplete="email" /></label>
+          <label><span>密码</span><input id="authPassword" type="password" placeholder="至少 6 位" autocomplete="current-password" /></label>
+          <p class="hint" id="authStatus">请先登录。登录后进入项目看板，再进入工作台。</p>
+          <div class="login-actions">
+            <button class="primary" id="loginBtn" type="button">登录</button>
+            <button class="ghost" id="registerBtn" type="button">注册新账号</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="platform-shell hidden" id="platformShell">
+        <header class="topbar">
+          <div class="brand">
+            <span class="brand-mark">镜</span>
+            <div>
+              <p>Storyboard Lab</p>
+              <h1>AI分镜拆解助手</h1>
+            </div>
+          </div>
+          <div class="top-actions">
+            <button class="ghost" id="toDashboard">项目看板</button>
+            <button class="ghost account-pill" id="authBtn" type="button">未登录</button>
+            <button class="ghost" id="apiBtn">API 接入</button>
+            <button class="ghost" id="sampleBtn">载入示例</button>
+            <button class="ghost" id="logoutBtn" type="button">退出</button>
+          </div>
+        </header>
+
+        <section class="hero">
+          <div>
+            <p class="eyebrow">Final MVP</p>
+            <h2>先确认分镜，再生成可讨论的分镜图</h2>
+            <p>最终版聚焦剧本分析可编辑、分镜确认、参考图上传和火柴人/线稿/写实版分镜图输出。</p>
+          </div>
+        </section>
+
+        <section class="stage">
+          <span class="active">01 项目看板</span>
+          <span>02 导入脚本</span>
+          <span>03 剧本分析</span>
+          <span>04 分镜确认</span>
+          <span>05 生成图</span>
+        </section>
+
+        <section class="panel" id="dashboard">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Project Board</p>
+              <h3>项目看板</h3>
+            </div>
+            <button class="primary" id="newProject">新建项目</button>
+          </div>
+          <div class="kanban" id="projectList">
+            <article>
+              <span class="tag">示例项目</span>
+              <h4>30秒新能源电动车广告</h4>
+              <p>用于演示从脚本导入、剧本分析、分镜确认到生成分镜图的最终流程。</p>
+              <button class="text-btn" id="openSample">打开示例</button>
+            </article>
+            <article>
+              <span class="tag">新项目</span>
+              <h4>从空白项目开始</h4>
+              <p>先填写项目类型、时长、画幅、风格和目标平台，再导入脚本。</p>
+              <button class="text-btn" id="openNew">选择新建</button>
+            </article>
+            <article>
+              <span class="tag">平台设置</span>
+              <h4>API 接入</h4>
+              <p>API Key 属于平台级配置，不写入项目导出，避免和项目资料混在一起。</p>
+              <button class="text-btn" id="apiCardBtn">打开 API 设置</button>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel hidden" id="setup">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">New Project</p>
+              <h3>新建项目</h3>
+            </div>
+            <button class="ghost" id="backDashboard">返回看板</button>
+          </div>
+          <div class="project-grid">
+            <label><span>项目名称</span><input id="projectName" value="30秒新能源电动车广告" /></label>
+            <label><span>类型</span><input id="projectType" list="typeOptions" placeholder="可选择或手动输入" /></label>
+            <label><span>时长（秒）</span><input id="duration" type="number" min="1" value="30" /></label>
+            <label><span>画幅比例</span><input id="aspect" list="aspectOptions" placeholder="如 9:16" /></label>
+            <label><span>风格</span><input id="style" list="styleOptions" placeholder="可选择或手动输入" /></label>
+            <label><span>目标平台</span><input id="platform" list="platformOptions" placeholder="可选择或手动输入" /></label>
+          </div>
+          <button class="primary right" id="createProject">创建并导入脚本</button>
+        </section>
+
+        <datalist id="typeOptions"><option value="广告片"></option><option value="短视频"></option><option value="产品种草"></option><option value="品牌宣传"></option></datalist>
+        <datalist id="aspectOptions"><option value="9:16 竖屏"></option><option value="16:9 横屏"></option><option value="1:1 方形"></option><option value="4:5 信息流"></option></datalist>
+        <datalist id="styleOptions"><option value="真实广告"></option><option value="生活方式"></option><option value="科技感"></option><option value="纪实感"></option></datalist>
+        <datalist id="platformOptions"><option value="抖音"></option><option value="小红书"></option><option value="视频号"></option><option value="B站"></option></datalist>
+
+        <section class="workbench hidden" id="workbench">
+          <aside class="status">
+            <p class="eyebrow">Status</p>
+            <h3>项目状态</h3>
+            <div class="metric"><span>镜头</span><strong id="shotCount">0</strong></div>
+            <div class="metric"><span>已确认</span><strong id="confirmedCount">0</strong></div>
+            <div class="metric"><span>分镜图</span><strong id="boardCount">0</strong></div>
+            <dl id="summary"></dl>
+            <p class="notice" id="notice">先导入脚本，再做剧本分析。</p>
+          </aside>
+
+          <div class="maincol">
+            <section class="panel">
+              <div class="section-head">
+                <div><p class="eyebrow">Script Import</p><h3>导入脚本</h3></div>
+                <button class="ghost" id="clearScript">清空</button>
+              </div>
+              <div class="tabs">
+                <button class="active" id="directTab">直接输入</button>
+                <button id="uploadTab">上传文件</button>
+              </div>
+              <div class="upload hidden" id="uploadBox">
+                <input id="fileInput" type="file" accept=".txt,.md,.csv,.doc,.docx,.pdf,.xls,.xlsx" />
+                <p id="fileStatus">静态演示版可读取 TXT/MD/CSV，Word/PDF/Excel 保留上传入口。</p>
+              </div>
+              <label class="field">
+                <span>脚本文案</span>
+                <textarea id="scriptInput" placeholder="可以粘贴脚本，也可以手动输入。"></textarea>
+              </label>
+              <div class="script-tools">
+                <label><span>分镜图类型</span><select id="boardStyle"><option>线稿</option><option>火柴人</option><option>写实版</option></select></label>
+                <label><span>创意强度</span><input id="creativity" type="range" min="0" max="3" value="2" /></label>
+                <button class="primary" id="analyze">下一步：剧本分析</button>
+              </div>
+            </section>
+
+            <section class="panel" id="analysisPanel">
+              <div class="section-head">
+                <div><p class="eyebrow">Script Analysis</p><h3>剧本分析</h3></div>
+                <button class="primary" id="split">确认分析并拆解分镜</button>
+              </div>
+              <p class="hint">人物、场景、道具、产品可能有多个；台词和旁白可决定是否带入分镜。</p>
+              <div class="analysis-grid" id="analysisGrid"><div class="empty">导入脚本后点击剧本分析。</div></div>
+            </section>
+
+            <section class="panel">
+              <div class="section-head">
+                <div><p class="eyebrow">Storyboard Review</p><h3>分镜确认台</h3></div>
+                <div class="actions">
+                  <button class="ghost" id="addShot">新增镜头</button>
+                  <button class="ghost" id="confirmAll">全部确认</button>
+                  <button class="primary" id="generate">生成分镜图</button>
+                </div>
+              </div>
+              <div class="global-row">
+                <label><span>整体色调</span><input id="tone" list="toneOptions" value="清爽蓝绿" /></label>
+                <label><span>整体风格</span><input id="visualStyle" list="visualStyleOptions" value="真实广告" /></label>
+              </div>
+              <datalist id="toneOptions"><option value="清爽蓝绿"></option><option value="暖色晨光"></option><option value="冷调科技"></option><option value="高级黑白"></option></datalist>
+              <datalist id="visualStyleOptions"><option value="真实广告"></option><option value="生活方式"></option><option value="科技感"></option><option value="纪实感"></option></datalist>
+              <div id="shots" class="shot-list"><div class="empty">确认剧本分析后，这里会出现分镜卡片。</div></div>
+            </section>
+
+            <section class="panel">
+              <div class="section-head">
+                <div><p class="eyebrow">Storyboard Frames</p><h3>分镜图</h3></div>
+                <div class="actions">
+                  <button class="ghost" data-style="火柴人">火柴人</button>
+                  <button class="ghost" data-style="线稿">线稿</button>
+                  <button class="ghost" data-style="写实版">写实版</button>
+                </div>
+              </div>
+              <div id="boards" class="board-grid"><div class="empty">确认分镜后点击生成分镜图。</div></div>
+            </section>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <dialog id="apiDialog">
+      <form method="dialog" class="api-box" id="apiForm">
+        <h3>API 接入</h3>
+        <p>这是平台级配置，不进入项目导出文件。</p>
+        <label><span>服务商</span><select id="apiProvider"><option value="mock">本地演示模式</option><option value="openai-compatible">OpenAI Compatible</option><option value="custom">自定义 API</option></select></label>
+        <label><span>API Base URL</span><input id="apiBaseUrl" placeholder="https://api.example.com/v1" /></label>
+        <label><span>API Key</span><input id="apiKey" type="password" placeholder="sk-..." autocomplete="off" /></label>
+        <label><span>拆解模型</span><input id="apiTextModel" placeholder="text model" /></label>
+        <label><span>分镜图模型</span><input id="apiImageModel" placeholder="image model" /></label>
+        <label><span>Temperature</span><input id="apiTemperature" type="number" min="0" max="2" step="0.1" value="0.7" /></label>
+        <p class="hint" id="apiStatus">使用双击启动入口打开后，可以读取和保存本地 API 配置。</p>
+        <div class="dialog-actions">
+          <button class="ghost" value="cancel">关闭</button>
+          <button class="primary" id="apiSave" type="button">保存设置</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div class="toast" id="toast"></div>
+    <script src="./app.js"></script>
+  </body>
+</html>

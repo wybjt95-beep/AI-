@@ -1,0 +1,12 @@
+.DS_Store
+work/
+outputs/
+*.zip
+*.log
+__pycache__/
+*.pyc
+.env
+.data/
+*.db
+*.db-shm
+*.db-wal
