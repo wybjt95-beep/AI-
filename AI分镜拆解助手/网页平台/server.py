@@ -1008,8 +1008,8 @@ def mock_split(payload, source="mock"):
     selling_points = analysis.get("sellingPoints") or []
     dialogue = analysis.get("dialogue") or []
     narration = analysis.get("narration") or []
-    include_dialogue = bool(payload.get("includeDialogue"))
-    include_narration = bool(payload.get("includeNarration"))
+    include_dialogue = payload.get("includeDialogue") is not False
+    include_narration = payload.get("includeNarration") is not False
 
     shots = []
     current_location = locations[0] if locations else ""
@@ -1076,8 +1076,8 @@ def build_prompt(payload):
         "creativityInstruction": creativity_label(payload.get("creativity")),
         "shotCount": payload.get("shotCount") or "由系统根据脚本和片长自由判断",
         "globalNotes": payload.get("globalNotes") or "",
-        "includeDialogue": bool(payload.get("includeDialogue")),
-        "includeNarration": bool(payload.get("includeNarration")),
+        "includeDialogue": payload.get("includeDialogue") is not False,
+        "includeNarration": payload.get("includeNarration") is not False,
     }
     return (
         template.replace("{{PROJECT_JSON}}", json.dumps(project_context, ensure_ascii=False, indent=2))
@@ -1554,10 +1554,10 @@ def call_openai_compatible(payload, api_config):
 
 
 def enforce_script_toggles(result, payload):
-    if not bool(payload.get("includeDialogue")):
+    if payload.get("includeDialogue") is False:
         for shot in result.get("shots", []):
             shot["dialogue"] = "无台词"
-    if not bool(payload.get("includeNarration")):
+    if payload.get("includeNarration") is False:
         for shot in result.get("shots", []):
             shot["narration"] = "无旁白"
     return result

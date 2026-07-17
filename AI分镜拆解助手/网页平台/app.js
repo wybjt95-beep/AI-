@@ -21,8 +21,8 @@ const state = {
   screen: "login",
   project: { ...DEFAULT_PROJECT },
   detected: emptyDetected(),
-  includeDialogue: false,
-  includeNarration: false,
+  includeDialogue: true,
+  includeNarration: true,
   shots: [],
   boardsGenerated: false,
   hydrating: false,
@@ -291,8 +291,8 @@ function projectSnapshot() {
     globalNotes: els.globalNotes.value,
     shotTarget: els.shotTarget.value,
     detected: normalizeAnalysisData(state.detected),
-    includeDialogue: state.includeDialogue,
-    includeNarration: state.includeNarration,
+    includeDialogue: true,
+    includeNarration: true,
     shots: state.shots,
     boardsGenerated: state.boardsGenerated,
     boardStyle: els.boardStyle.value,
@@ -399,8 +399,8 @@ function restoreProject(record) {
   state.projectId = record.id || newProjectId();
   state.project = { ...state.project, ...(record.project || {}) };
   state.detected = normalizeAnalysisData(record.detected || {});
-  state.includeDialogue = Boolean(record.includeDialogue);
-  state.includeNarration = Boolean(record.includeNarration);
+  state.includeDialogue = true;
+  state.includeNarration = true;
   state.shots = (Array.isArray(record.shots) ? record.shots : []).map((shot, index) => ({
     ...shot,
     id: shot.id || `${Date.now()}-${index}`,
@@ -434,8 +434,8 @@ function resetWorkspace() {
 	  state.projectId = "";
 	  state.project = { ...DEFAULT_PROJECT };
   state.detected = emptyDetected();
-  state.includeDialogue = false;
-  state.includeNarration = false;
+  state.includeDialogue = true;
+  state.includeNarration = true;
   state.shots = [];
   state.boardsGenerated = false;
   applyProject(state.project);
@@ -530,12 +530,10 @@ function renderSummary() {
   els.notice.textContent = state.shots.length ? "分镜可继续编辑，确认后生成分镜图。" : "先导入脚本，再做剧本分析。";
 }
 
-function analysisCard(field, title, desc, optionKey) {
+function analysisCard(field, title, desc) {
   const value = (state.detected[field] || []).join("\n");
-  const toggle = optionKey ? `<label class="toggle"><input type="checkbox" data-option="${optionKey}" ${state[optionKey] ? "checked" : ""} />带入分镜</label>` : "";
   const help = desc ? `<p>${desc}</p>` : "";
   return `<article class="analysis-card">
-    ${toggle}
     <label><span>${title}</span><textarea data-analysis="${field}">${esc(value)}</textarea></label>
     ${help}
   </article>`;
@@ -549,8 +547,8 @@ function renderAnalysis() {
     analysisCard("product", "产品", "识别项目中需要重点呈现的产品、服务及核心对象。"),
     analysisCard("times", "时间段", "提取脚本中明确出现的时间阶段及昼夜信息。"),
     analysisCard("sellingPoints", "卖点", "提炼脚本重点传达的产品优势、功能价值及品牌信息。"),
-    analysisCard("dialogue", "台词", "提取人物明确说出的对白，并按需同步至分镜。", "includeDialogue"),
-    analysisCard("narration", "旁白", "提取明确标注的旁白、口播及 VO 文案。", "includeNarration"),
+    analysisCard("dialogue", "台词", "提取人物明确说出的对白，会自动带入分镜。"),
+    analysisCard("narration", "旁白", "提取明确标注的旁白、口播及 VO 文案，会自动带入分镜。"),
   ].join("");
 }
 
@@ -665,8 +663,8 @@ function localStoryboardShots() {
     props: state.detected.props.find((item) => unit.includes(item)) || inferPropText(unit),
     product: pickFromText(state.detected.product, unit, "待补充产品", i),
     time: pickFromText(state.detected.times, unit, "待补充时间段", i),
-    dialogue: state.includeDialogue ? pickFromText(state.detected.dialogue, unit, "无台词", i) : "无台词",
-    narration: state.includeNarration ? pickFromText(state.detected.narration, unit, "无旁白", i) : "无旁白",
+    dialogue: pickFromText(state.detected.dialogue, unit, "无台词", i),
+    narration: pickFromText(state.detected.narration, unit, "无旁白", i),
     focus: pickFromText(state.detected.sellingPoints, unit, brief ? `结合创作要求：${brief}` : "画面关系与情绪变化", i),
     status: "待确认",
     refName: "",
@@ -712,8 +710,8 @@ function splitPayload() {
     script: els.scriptInput.value.trim(),
     project: state.project,
     analysis: state.detected,
-    includeDialogue: state.includeDialogue,
-    includeNarration: state.includeNarration,
+    includeDialogue: true,
+    includeNarration: true,
     boardStyle: els.boardStyle.value,
     tone: overallColorTone,
     visualStyle: overallVisualStyle,
@@ -1346,8 +1344,8 @@ function exportPayload(format) {
     script: els.scriptInput.value.trim(),
     globalNotes: els.globalNotes.value.trim(),
     detected: normalizeAnalysisData(state.detected),
-    includeDialogue: state.includeDialogue,
-    includeNarration: state.includeNarration,
+    includeDialogue: true,
+    includeNarration: true,
     boardStyle: els.boardStyle.value,
     tone: overallColorTone,
     visualStyle: overallVisualStyle,
@@ -1515,8 +1513,8 @@ function syncAnalysisFromInputs() {
   els.analysisGrid.querySelectorAll("[data-analysis]").forEach((node) => {
     state.detected[node.dataset.analysis] = parseList(node.value);
   });
-  state.includeDialogue = Boolean(els.analysisGrid.querySelector("[data-option='includeDialogue']")?.checked);
-  state.includeNarration = Boolean(els.analysisGrid.querySelector("[data-option='includeNarration']")?.checked);
+  state.includeDialogue = true;
+  state.includeNarration = true;
 }
 
 async function analyzeScript() {
