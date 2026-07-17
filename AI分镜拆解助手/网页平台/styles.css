@@ -1645,6 +1645,18 @@ dialog::backdrop {
   min-width: 220px;
 }
 
+.export-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(150px, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.export-actions .ghost {
+  min-height: 58px;
+  background: #fff;
+}
+
 .shot-side {
   gap: 8px;
 }
@@ -1750,6 +1762,7 @@ dialog::backdrop {
     position: static;
   }
   .stage,
+  .export-actions,
   .shot-card,
   .shot-meta-row,
   .shot-entity-row,

@@ -1126,6 +1126,92 @@ function imagePayload(confirmed) {
   };
 }
 
+function exportPayload(format) {
+  syncAnalysisFromInputs();
+  return {
+    format,
+    project: state.project,
+    script: els.scriptInput.value.trim(),
+    globalNotes: els.globalNotes.value.trim(),
+    detected: normalizeAnalysisData(state.detected),
+    includeDialogue: state.includeDialogue,
+    includeNarration: state.includeNarration,
+    boardStyle: els.boardStyle.value,
+    tone: els.tone.value,
+    visualStyle: els.visualStyle.value,
+    creativity: els.creativity.value,
+    creativityLabel: creativityLabel(),
+    shotCount: els.shotTarget.value.trim(),
+    boardsGenerated: state.boardsGenerated,
+    shots: state.shots.map((shot) => ({
+      no: shot.no,
+      type: shot.type,
+      content: shot.content,
+      shotSize: shot.shotSize,
+      camera: shot.camera,
+      duration: shot.duration,
+      people: shot.people,
+      location: shot.location,
+      props: shot.props,
+      product: shot.product,
+      time: shot.time,
+      dialogue: shot.dialogue,
+      narration: shot.narration,
+      focus: shot.focus,
+      status: shot.status,
+      refName: shot.refName,
+      boardSource: shot.boardSource || "",
+      boardModel: shot.boardModel || "",
+      boardWarning: shot.boardWarning || "",
+      hasBoardImage: Boolean(shot.boardImage),
+    })),
+  };
+}
+
+function filenameFromDisposition(header, fallback) {
+  const value = String(header || "");
+  const utf8Match = value.match(/filename\\*=UTF-8''([^;]+)/i);
+  if (utf8Match) return decodeURIComponent(utf8Match[1]);
+  const match = value.match(/filename="?([^";]+)"?/i);
+  return match ? match[1] : fallback;
+}
+
+async function exportProject(format, button) {
+  if (!canUseBackend()) return showToast("请使用打开本地网页.command 或线上地址导出文件。");
+  if (!state.shots.length) return showToast("请先拆解分镜，再导出文件。");
+  const buttonText = button.textContent;
+  button.disabled = true;
+  button.textContent = "导出中...";
+  try {
+    const response = await fetch("/api/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(exportPayload(format)),
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || "导出失败");
+    }
+    const blob = await response.blob();
+    const filename = filenameFromDisposition(response.headers.get("Content-Disposition"), `AI分镜拆解助手导出.${format}`);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    showToast(`已导出 ${filename}`);
+  } catch (error) {
+    console.warn(error);
+    showToast(error.message || "导出失败。");
+  } finally {
+    button.disabled = false;
+    button.textContent = buttonText;
+  }
+}
+
 async function requestStoryboardImages(confirmed) {
   const response = await fetch("/api/storyboard/images", {
     method: "POST",
@@ -1368,6 +1454,7 @@ function bindEvents() {
   els.registerBtn.addEventListener("click", () => submitAuth("register"));
   els.logoutBtn.addEventListener("click", logout);
   $("#apiSave").addEventListener("click", saveApiConfig);
+  document.querySelectorAll("[data-export]").forEach((btn) => btn.addEventListener("click", () => exportProject(btn.dataset.export, btn)));
   els.dashboard.addEventListener("click", async (event) => {
     if (event.target.id === "openSample") return openSample();
     if (event.target.id === "openNew") return startNewProjectSetup();

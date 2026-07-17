@@ -2,8 +2,10 @@
 import argparse
 import base64
 from contextlib import contextmanager
+from datetime import datetime, timezone
 import hashlib
 import hmac
+import io
 import json
 import mimetypes
 import os
@@ -15,6 +17,8 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from xml.sax.saxutils import escape as xml_escape
+import zipfile
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -604,6 +608,16 @@ def json_response(handler, status, payload, extra_headers=None):
     handler.send_header("Content-Length", str(len(body)))
     for key, value in (extra_headers or {}).items():
         handler.send_header(key, value)
+    handler.end_headers()
+    handler.wfile.write(body)
+
+
+def binary_response(handler, status, body, content_type, filename):
+    encoded_filename = urllib.parse.quote(filename)
+    handler.send_response(status)
+    handler.send_header("Content-Type", content_type)
+    handler.send_header("Content-Length", str(len(body)))
+    handler.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{encoded_filename}")
     handler.end_headers()
     handler.wfile.write(body)
 
@@ -1347,6 +1361,558 @@ def split_storyboard(payload, user=None):
         return enforce_script_toggles(fallback, payload)
 
 
+def xml_clean(value):
+    text = str(value or "")
+    text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", text)
+    return xml_escape(text, {'"': "&quot;", "'": "&apos;"})
+
+
+def export_text(value, fallback=""):
+    if isinstance(value, list):
+        return "、".join(unique(value)) or fallback
+    if isinstance(value, dict):
+        return json.dumps(value, ensure_ascii=False)
+    return str(value or "").strip() or fallback
+
+
+def short_text(value, length=80):
+    text = re.sub(r"\s+", " ", export_text(value)).strip()
+    return text if len(text) <= length else text[: length - 1] + "…"
+
+
+def safe_export_filename(payload, extension):
+    project = payload.get("project") or {}
+    name = export_text(project.get("name"), "AI分镜拆解助手导出")
+    name = re.sub(r'[\\/:*?"<>|]+', "_", name).strip(" .") or "AI分镜拆解助手导出"
+    return f"{name}_分镜交付.{extension}"
+
+
+def export_project_rows(payload):
+    project = payload.get("project") or {}
+    return [
+        ["项目名称", project.get("name")],
+        ["项目类型", project.get("type")],
+        ["项目时长", f"{project.get('duration') or ''} 秒".strip()],
+        ["画幅比例", project.get("aspect")],
+        ["项目风格", project.get("style")],
+        ["目标平台", project.get("platform")],
+        ["整体色调", payload.get("tone")],
+        ["整体风格", payload.get("visualStyle")],
+        ["分镜图类型", payload.get("boardStyle")],
+        ["创意强度", payload.get("creativityLabel") or payload.get("creativity")],
+        ["指定镜头数量", payload.get("shotCount") or "由系统判断"],
+        ["全局创作要求", payload.get("globalNotes")],
+        ["导出说明", "本文件不包含用户 API Key 或平台级 API 配置。"],
+    ]
+
+
+def export_analysis_rows(payload):
+    detected = payload.get("detected") or {}
+    labels = [
+        ("people", "人物"),
+        ("locations", "场景"),
+        ("props", "道具"),
+        ("product", "产品"),
+        ("times", "时间段"),
+        ("sellingPoints", "卖点"),
+        ("dialogue", "台词"),
+        ("narration", "旁白"),
+    ]
+    return [["分析项", "识别结果"]] + [[label, export_text(detected.get(key), "未识别")] for key, label in labels]
+
+
+def export_shot_headers():
+    return [
+        "镜号",
+        "镜头类型",
+        "画面内容",
+        "景别",
+        "运镜",
+        "时长",
+        "人物",
+        "场景",
+        "道具",
+        "产品",
+        "时间段",
+        "台词",
+        "旁白",
+        "画面重点",
+        "状态",
+        "参考图",
+        "分镜图记录",
+        "备注",
+    ]
+
+
+def export_shot_rows(payload):
+    rows = [export_shot_headers()]
+    for shot in payload.get("shots") or []:
+        if not isinstance(shot, dict):
+            continue
+        board_state = "已生成真实图片" if shot.get("hasBoardImage") else "本地草图/未生成真实图片"
+        if shot.get("boardSource"):
+            board_state += f"；来源：{shot.get('boardSource')}"
+        if shot.get("boardModel"):
+            board_state += f"；模型：{shot.get('boardModel')}"
+        rows.append(
+            [
+                shot.get("no"),
+                shot.get("type"),
+                shot.get("content"),
+                shot.get("shotSize"),
+                shot.get("camera"),
+                shot.get("duration"),
+                shot.get("people"),
+                shot.get("location"),
+                shot.get("props"),
+                shot.get("product"),
+                shot.get("time"),
+                shot.get("dialogue"),
+                shot.get("narration"),
+                shot.get("focus"),
+                shot.get("status"),
+                shot.get("refName") or "未上传",
+                board_state,
+                shot.get("boardWarning") or "",
+            ]
+        )
+    return rows
+
+
+def col_name(index):
+    name = ""
+    while index:
+        index, remainder = divmod(index - 1, 26)
+        name = chr(65 + remainder) + name
+    return name
+
+
+def xlsx_cell(row_index, col_index, value, style=None):
+    ref = f"{col_name(col_index)}{row_index}"
+    style_attr = f' s="{style}"' if style else ""
+    text = xml_clean(export_text(value))
+    return f'<c r="{ref}" t="inlineStr"{style_attr}><is><t xml:space="preserve">{text}</t></is></c>'
+
+
+def xlsx_sheet_xml(rows, freeze_header=False):
+    max_cols = max((len(row) for row in rows), default=1)
+    cols = "".join(f'<col min="{i}" max="{i}" width="18" customWidth="1"/>' for i in range(1, max_cols + 1))
+    sheet_view = '<sheetViews><sheetView workbookViewId="0">'
+    if freeze_header:
+        sheet_view += '<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>'
+    sheet_view += "</sheetView></sheetViews>"
+    row_xml = []
+    for row_index, row in enumerate(rows, 1):
+        cells = "".join(xlsx_cell(row_index, col_index, value, "1" if freeze_header and row_index == 1 else None) for col_index, value in enumerate(row, 1))
+        row_xml.append(f'<row r="{row_index}">{cells}</row>')
+    dimension = f'A1:{col_name(max_cols)}{max(len(rows), 1)}'
+    return (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        f'<dimension ref="{dimension}"/>{sheet_view}{cols}<sheetData>{"".join(row_xml)}</sheetData>'
+        "</worksheet>"
+    )
+
+
+def build_xlsx(payload):
+    sheets = [
+        ("项目信息", [["字段", "内容"]] + export_project_rows(payload)),
+        ("标准分镜表", export_shot_rows(payload)),
+        ("剧本分析", export_analysis_rows(payload)),
+    ]
+    workbook_sheets = "".join(f'<sheet name="{xml_clean(name)}" sheetId="{i}" r:id="rId{i}"/>' for i, (name, _) in enumerate(sheets, 1))
+    workbook_rels = "".join(
+        f'<Relationship Id="rId{i}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet{i}.xml"/>'
+        for i in range(1, len(sheets) + 1)
+    )
+    workbook_rels += '<Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
+    content_types = "".join(
+        f'<Override PartName="/xl/worksheets/sheet{i}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+        for i in range(1, len(sheets) + 1)
+    )
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(
+            "[Content_Types].xml",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            '<Default Extension="xml" ContentType="application/xml"/>'
+            '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+            '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
+            f"{content_types}</Types>",
+        )
+        zf.writestr(
+            "_rels/.rels",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+            "</Relationships>",
+        )
+        zf.writestr(
+            "xl/workbook.xml",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+            'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            f"<sheets>{workbook_sheets}</sheets></workbook>",
+        )
+        zf.writestr(
+            "xl/_rels/workbook.xml.rels",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            f"{workbook_rels}</Relationships>",
+        )
+        zf.writestr(
+            "xl/styles.xml",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+            '<fonts count="2"><font><sz val="11"/><name val="Microsoft YaHei"/></font><font><b/><sz val="11"/><name val="Microsoft YaHei"/></font></fonts>'
+            '<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFEFEFEF"/><bgColor indexed="64"/></patternFill></fill></fills>'
+            '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
+            '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+            '<cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="1" borderId="0" xfId="0" applyFont="1" applyFill="1"/></cellXfs>'
+            "</styleSheet>",
+        )
+        for index, (_, rows) in enumerate(sheets, 1):
+            zf.writestr(f"xl/worksheets/sheet{index}.xml", xlsx_sheet_xml(rows, freeze_header=True))
+    return buffer.getvalue()
+
+
+def docx_text_run(text):
+    parts = str(text or "").splitlines() or [""]
+    body = []
+    for index, part in enumerate(parts):
+        if index:
+            body.append("<w:br/>")
+        body.append(f"<w:t xml:space=\"preserve\">{xml_clean(part)}</w:t>")
+    return "".join(body)
+
+
+def docx_paragraph(text, style=None):
+    style_xml = f'<w:pPr><w:pStyle w:val="{style}"/></w:pPr>' if style else ""
+    return f"<w:p>{style_xml}<w:r>{docx_text_run(text)}</w:r></w:p>"
+
+
+def docx_table(rows):
+    row_xml = []
+    for row_index, row in enumerate(rows):
+        cells = []
+        for value in row:
+            bold = "<w:rPr><w:b/></w:rPr>" if row_index == 0 else ""
+            cells.append(
+                "<w:tc><w:tcPr><w:tcW w:w=\"2400\" w:type=\"dxa\"/></w:tcPr>"
+                f"<w:p><w:r>{bold}{docx_text_run(value)}</w:r></w:p></w:tc>"
+            )
+        row_xml.append(f"<w:tr>{''.join(cells)}</w:tr>")
+    return (
+        "<w:tbl><w:tblPr><w:tblW w:w=\"0\" w:type=\"auto\"/>"
+        '<w:tblBorders><w:top w:val="single" w:sz="6" w:space="0" w:color="999999"/>'
+        '<w:left w:val="single" w:sz="6" w:space="0" w:color="999999"/>'
+        '<w:bottom w:val="single" w:sz="6" w:space="0" w:color="999999"/>'
+        '<w:right w:val="single" w:sz="6" w:space="0" w:color="999999"/>'
+        '<w:insideH w:val="single" w:sz="6" w:space="0" w:color="CCCCCC"/>'
+        '<w:insideV w:val="single" w:sz="6" w:space="0" w:color="CCCCCC"/></w:tblBorders></w:tblPr>'
+        f"{''.join(row_xml)}</w:tbl>"
+    )
+
+
+def build_docx(payload):
+    project = payload.get("project") or {}
+    body = [
+        docx_paragraph(project.get("name") or "AI分镜拆解助手导出", "Title"),
+        docx_paragraph("项目交付文档", "Subtitle"),
+        docx_paragraph("项目信息", "Heading1"),
+        docx_table([["字段", "内容"]] + export_project_rows(payload)),
+        docx_paragraph("剧本分析", "Heading1"),
+        docx_table(export_analysis_rows(payload)),
+        docx_paragraph("标准分镜表", "Heading1"),
+        docx_table(export_shot_rows(payload)),
+        docx_paragraph("原始脚本", "Heading1"),
+        docx_paragraph(payload.get("script") or "未填写脚本。"),
+    ]
+    document_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        f"<w:body>{''.join(body)}"
+        '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134"/></w:sectPr>'
+        "</w:body></w:document>"
+    )
+    styles_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        '<w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:rPr><w:b/><w:sz w:val="40"/></w:rPr></w:style>'
+        '<w:style w:type="paragraph" w:styleId="Subtitle"><w:name w:val="Subtitle"/><w:rPr><w:color w:val="666666"/><w:sz w:val="24"/></w:rPr></w:style>'
+        '<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="Heading 1"/><w:rPr><w:b/><w:sz w:val="28"/></w:rPr></w:style>'
+        "</w:styles>"
+    )
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(
+            "[Content_Types].xml",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            '<Default Extension="xml" ContentType="application/xml"/>'
+            '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+            '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>'
+            "</Types>",
+        )
+        zf.writestr(
+            "_rels/.rels",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>'
+            "</Relationships>",
+        )
+        zf.writestr("word/document.xml", document_xml)
+        zf.writestr("word/styles.xml", styles_xml)
+        zf.writestr(
+            "word/_rels/document.xml.rels",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
+            "</Relationships>",
+        )
+    return buffer.getvalue()
+
+
+def ppt_paragraph(text, font_size=2200, bold=False):
+    bold_attr = ' b="1"' if bold else ""
+    return (
+        "<a:p><a:r>"
+        f'<a:rPr lang="zh-CN" sz="{font_size}"{bold_attr}/>'
+        f"<a:t>{xml_clean(text)}</a:t>"
+        "</a:r></a:p>"
+    )
+
+
+def ppt_text_box(shape_id, x, y, cx, cy, paragraphs):
+    body = "".join(paragraphs)
+    return (
+        "<p:sp>"
+        f'<p:nvSpPr><p:cNvPr id="{shape_id}" name="TextBox {shape_id}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>'
+        f'<p:spPr><a:xfrm><a:off x="{x}" y="{y}"/><a:ext cx="{cx}" cy="{cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln></p:spPr>'
+        f'<p:txBody><a:bodyPr wrap="square"/><a:lstStyle/>{body}</p:txBody>'
+        "</p:sp>"
+    )
+
+
+def ppt_slide_xml(title, lines, slide_index):
+    shapes = [
+        ppt_text_box(2, 620000, 420000, 10500000, 900000, [ppt_paragraph(title, 3200, True)]),
+        ppt_text_box(3, 660000, 1420000, 10800000, 4800000, [ppt_paragraph(line, 1900, False) for line in lines]),
+    ]
+    return (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
+        'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">'
+        "<p:cSld><p:spTree>"
+        '<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>'
+        '<p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>'
+        f"{''.join(shapes)}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>"
+    )
+
+
+def ppt_slides(payload):
+    project = payload.get("project") or {}
+    analysis = payload.get("detected") or {}
+    shots = [shot for shot in (payload.get("shots") or []) if isinstance(shot, dict)]
+    slides = [
+        (
+            project.get("name") or "AI分镜拆解助手导出",
+            [
+                "AI分镜拆解助手项目展示",
+                f"类型：{export_text(project.get('type'), '未填写')}  时长：{export_text(project.get('duration'), '未填写')}秒",
+                f"风格：{export_text(project.get('style'), '未填写')}  平台：{export_text(project.get('platform'), '未填写')}",
+                "说明：导出文件不包含用户 API Key 或平台级 API 配置。",
+            ],
+        ),
+        (
+            "项目信息与创作要求",
+            [f"{key}：{export_text(value, '未填写')}" for key, value in export_project_rows(payload)[:12]],
+        ),
+        (
+            "剧本分析结果",
+            [f"{label}：{export_text(analysis.get(key), '未识别')}" for key, label in [
+                ("people", "人物"),
+                ("locations", "场景"),
+                ("props", "道具"),
+                ("product", "产品"),
+                ("times", "时间段"),
+                ("sellingPoints", "卖点"),
+            ]],
+        ),
+    ]
+    overview = []
+    for shot in shots[:6]:
+        overview.append(f"{shot.get('no')} {short_text(shot.get('type'), 14)}：{short_text(shot.get('content'), 42)}")
+    slides.append(("分镜概览", overview or ["暂无分镜数据。"]))
+    for start in range(0, len(shots), 3):
+        chunk = shots[start : start + 3]
+        lines = []
+        for shot in chunk:
+            lines.extend(
+                [
+                    f"{shot.get('no')} {export_text(shot.get('type'), '镜头')}｜{export_text(shot.get('shotSize'), '景别')}｜{export_text(shot.get('camera'), '运镜')}｜{export_text(shot.get('duration'), '时长')}",
+                    f"画面：{short_text(shot.get('content'), 80)}",
+                    f"人物/场景/道具：{short_text(shot.get('people'), 20)} / {short_text(shot.get('location'), 20)} / {short_text(shot.get('props'), 24)}",
+                    "",
+                ]
+            )
+        slides.append((f"分镜明细 {start + 1}-{start + len(chunk)}", lines))
+    return slides[:12]
+
+
+def build_pptx(payload):
+    slides = ppt_slides(payload)
+    slide_overrides = "".join(
+        f'<Override PartName="/ppt/slides/slide{i}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>'
+        for i in range(1, len(slides) + 1)
+    )
+    presentation_rels = '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="slideMasters/slideMaster1.xml"/>'
+    presentation_rels += "".join(
+        f'<Relationship Id="rId{i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide{i}.xml"/>'
+        for i in range(1, len(slides) + 1)
+    )
+    slide_ids = "".join(f'<p:sldId id="{255 + i}" r:id="rId{i + 1}"/>' for i in range(1, len(slides) + 1))
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(
+            "[Content_Types].xml",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            '<Default Extension="xml" ContentType="application/xml"/>'
+            '<Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>'
+            '<Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>'
+            '<Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>'
+            '<Override PartName="/ppt/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>'
+            '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>'
+            '<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>'
+            f"{slide_overrides}</Types>",
+        )
+        zf.writestr(
+            "_rels/.rels",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/>'
+            '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>'
+            '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>'
+            "</Relationships>",
+        )
+        zf.writestr(
+            "ppt/presentation.xml",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+            'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
+            'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">'
+            '<p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst>'
+            f"<p:sldIdLst>{slide_ids}</p:sldIdLst>"
+            '<p:sldSz cx="12192000" cy="6858000" type="wide"/><p:notesSz cx="6858000" cy="9144000"/>'
+            "</p:presentation>",
+        )
+        zf.writestr(
+            "ppt/_rels/presentation.xml.rels",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            f"{presentation_rels}</Relationships>",
+        )
+        zf.writestr(
+            "ppt/slideMasters/slideMaster1.xml",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<p:sldMaster xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+            'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
+            'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">'
+            '<p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>'
+            '<p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>'
+            '</p:spTree></p:cSld><p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/>'
+            '<p:sldLayoutIdLst><p:sldLayoutId id="2147483649" r:id="rId1"/></p:sldLayoutIdLst><p:txStyles/></p:sldMaster>',
+        )
+        zf.writestr(
+            "ppt/slideMasters/_rels/slideMaster1.xml.rels",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>'
+            '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="../theme/theme1.xml"/>'
+            "</Relationships>",
+        )
+        zf.writestr(
+            "ppt/slideLayouts/slideLayout1.xml",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<p:sldLayout xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+            'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
+            'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" type="blank" preserve="1">'
+            '<p:cSld name="Blank"><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>'
+            '<p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>'
+            '</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sldLayout>',
+        )
+        zf.writestr(
+            "ppt/slideLayouts/_rels/slideLayout1.xml.rels",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="../slideMasters/slideMaster1.xml"/>'
+            "</Relationships>",
+        )
+        zf.writestr(
+            "ppt/theme/theme1.xml",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Storyboard Lab">'
+            '<a:themeElements><a:clrScheme name="BlackWhite"><a:dk1><a:srgbClr val="111111"/></a:dk1><a:lt1><a:srgbClr val="FFFFFF"/></a:lt1>'
+            '<a:dk2><a:srgbClr val="222222"/></a:dk2><a:lt2><a:srgbClr val="F5F5F5"/></a:lt2>'
+            '<a:accent1><a:srgbClr val="111111"/></a:accent1><a:accent2><a:srgbClr val="666666"/></a:accent2><a:accent3><a:srgbClr val="999999"/></a:accent3>'
+            '<a:accent4><a:srgbClr val="DDDDDD"/></a:accent4><a:accent5><a:srgbClr val="000000"/></a:accent5><a:accent6><a:srgbClr val="444444"/></a:accent6>'
+            '<a:hlink><a:srgbClr val="000000"/></a:hlink><a:folHlink><a:srgbClr val="666666"/></a:folHlink></a:clrScheme>'
+            '<a:fontScheme name="Microsoft YaHei"><a:majorFont><a:latin typeface="Microsoft YaHei"/><a:ea typeface="Microsoft YaHei"/></a:majorFont><a:minorFont><a:latin typeface="Microsoft YaHei"/><a:ea typeface="Microsoft YaHei"/></a:minorFont></a:fontScheme>'
+            '<a:fmtScheme name="Default"><a:fillStyleLst><a:solidFill><a:schemeClr val="lt1"/></a:solidFill></a:fillStyleLst><a:lnStyleLst><a:ln w="6350"><a:solidFill><a:schemeClr val="dk1"/></a:solidFill></a:ln></a:lnStyleLst><a:effectStyleLst/><a:bgFillStyleLst><a:solidFill><a:schemeClr val="lt1"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme>'
+            "</a:themeElements></a:theme>",
+        )
+        zf.writestr(
+            "docProps/core.xml",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" '
+            'xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" '
+            'xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'
+            f"<dc:title>{xml_clean((payload.get('project') or {}).get('name') or 'AI分镜拆解助手导出')}</dc:title>"
+            f'<dcterms:created xsi:type="dcterms:W3CDTF">{now}</dcterms:created></cp:coreProperties>',
+        )
+        zf.writestr(
+            "docProps/app.xml",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" '
+            'xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">'
+            "<Application>AI分镜拆解助手</Application></Properties>",
+        )
+        for index, (title, lines) in enumerate(slides, 1):
+            zf.writestr(f"ppt/slides/slide{index}.xml", ppt_slide_xml(title, lines, index))
+    return buffer.getvalue()
+
+
+def build_export_file(payload):
+    fmt = str(payload.get("format") or "").lower().strip()
+    if fmt in {"excel", "xlsx"}:
+        return (
+            build_xlsx(payload),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            safe_export_filename(payload, "xlsx"),
+        )
+    if fmt in {"word", "docx"}:
+        return (
+            build_docx(payload),
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            safe_export_filename(payload, "docx"),
+        )
+    if fmt in {"ppt", "pptx"}:
+        return (
+            build_pptx(payload),
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            safe_export_filename(payload, "pptx"),
+        )
+    raise ValueError("不支持的导出格式")
+
+
 class StoryboardHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
@@ -1436,6 +2002,17 @@ class StoryboardHandler(SimpleHTTPRequestHandler):
                 return json_response(self, 401, {"error": str(exc)})
             except (ValueError, json.JSONDecodeError) as exc:
                 return json_response(self, 400, {"error": str(exc)})
+        if path == "/api/export":
+            try:
+                require_user(self)
+                body, content_type, filename = build_export_file(read_json_body(self))
+                return binary_response(self, 200, body, content_type, filename)
+            except PermissionError as exc:
+                return json_response(self, 401, {"error": str(exc)})
+            except (ValueError, json.JSONDecodeError) as exc:
+                return json_response(self, 400, {"error": str(exc)})
+            except Exception as exc:
+                return json_response(self, 500, {"error": f"文件导出失败：{exc}"})
         if path == "/api/script/analyze":
             try:
                 user, _ = require_user(self)
