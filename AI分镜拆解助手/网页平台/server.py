@@ -657,6 +657,86 @@ def storyboard_bank():
     ]
 
 
+def script_units(script, max_units=8):
+    text = re.sub(r"\s+", " ", str(script or "")).strip()
+    if not text:
+        return []
+    rough = re.split(r"[。！？!?；;\n]+", text)
+    units = []
+    for part in rough:
+        part = part.strip(" ，,")
+        if not part:
+            continue
+        clauses = re.split(r"[，,]", part) if len(part) > 42 else [part]
+        for clause in clauses:
+            clause = clause.strip()
+            if clause:
+                units.append(clause)
+    merged = []
+    for unit in units:
+        if merged and len(merged[-1]) + len(unit) < 28:
+            merged[-1] = f"{merged[-1]}，{unit}"
+        else:
+            merged.append(unit)
+    return merged[:max_units]
+
+
+def pick_from_text(options, text, fallback, offset=0):
+    values = [str(item).strip() for item in (options or []) if str(item).strip()]
+    if not values:
+        return fallback
+    for item in values:
+        if item and item in text:
+            return item
+    return values[offset % len(values)]
+
+
+def infer_prop_text(text, fallback="环境元素"):
+    if any(word in text for word in ["树", "草", "河", "湖", "路"]):
+        return "树木、路面、环境"
+    if any(word in text for word in ["电脑", "屏幕", "办公"]):
+        return "电脑、书桌"
+    if any(word in text for word in ["杯", "水", "咖啡", "饮料"]):
+        return "杯子"
+    if any(word in text for word in ["书", "资料", "文件"]):
+        return "书本、资料"
+    if any(word in text for word in ["手机", "APP", "界面"]):
+        return "手机、界面"
+    return fallback
+
+
+def infer_mock_shot_size(text, index, total):
+    if any(word in text for word in ["手", "眼神", "表情", "电脑", "手机", "杯", "道具", "细节", "特写"]):
+        return "特写" if index else "近景"
+    if index == 0:
+        return "远景"
+    if index == total - 1:
+        return "中景"
+    return ["中景", "近景", "中远景"][index % 3]
+
+
+def infer_mock_camera(text, index):
+    if any(word in text for word in ["走", "跑", "穿过", "移动", "经过", "骑", "跟"]):
+        return "跟拍"
+    if any(word in text for word in ["看", "相视", "对视", "发现", "望"]):
+        return "轻推至反应"
+    if any(word in text for word in ["放下", "拿起", "递", "打开", "启动"]):
+        return "微距推进"
+    return ["固定镜头", "缓慢推进", "横向轻移", "小幅环绕"][index % 4]
+
+
+def mock_shot_type(text, index, total):
+    if index == 0:
+        return "场景建立"
+    if index == total - 1:
+        return "情绪收束"
+    if any(word in text for word in ["电脑", "手机", "杯", "道具", "手", "细节"]):
+        return "细节强调"
+    if any(word in text for word in ["看", "笑", "相视", "对话", "说"]):
+        return "关系反应"
+    return "动作推进"
+
+
 def mock_analyze(payload, source="mock"):
     script = str(payload.get("script") or "")
     has = lambda word: word in script
@@ -711,41 +791,64 @@ def mock_analyze(payload, source="mock"):
 def mock_split(payload, source="mock"):
     project = payload.get("project") or {}
     analysis = payload.get("analysis") or {}
+    script = str(payload.get("script") or "")
     duration = int_duration(project)
-    bank = storyboard_bank()
-    base = max(1, duration // len(bank))
-    remain = max(0, duration - base * len(bank))
+    units = script_units(script)
+    if not units:
+        units = [
+            f"在{(analysis.get('locations') or ['主要场景'])[0]}建立人物和空间关系",
+            f"围绕{(analysis.get('props') or analysis.get('product') or ['核心物件'])[0]}呈现关键动作",
+            "捕捉人物反应和情绪变化",
+            "用留白或稳定构图完成收束",
+        ]
+    total = min(8, max(4, len(units))) if duration >= 15 else min(6, max(3, len(units)))
+    while len(units) < total:
+        units.append(units[-1])
+    units = units[:total]
+    base = max(1, duration // len(units))
+    remain = max(0, duration - base * len(units))
     people = analysis.get("people") or []
     locations = analysis.get("locations") or []
+    props = analysis.get("props") or []
     products = analysis.get("product") or []
     times = analysis.get("times") or []
+    selling_points = analysis.get("sellingPoints") or []
     dialogue = analysis.get("dialogue") or []
     narration = analysis.get("narration") or []
     include_dialogue = bool(payload.get("includeDialogue"))
     include_narration = bool(payload.get("includeNarration"))
 
     shots = []
-    for index, item in enumerate(bank):
+    current_location = locations[0] if locations else ""
+    for index, unit in enumerate(units):
         shot_duration = base + (1 if remain > 0 else 0)
         remain -= 1
-        office_locations = [x for x in locations if "办公楼" in str(x)]
-        location = office_locations[0] if index >= 6 and office_locations else (locations[0] if locations else "待补充地点")
+        matched_location = next((str(item).strip() for item in locations if str(item).strip() and str(item).strip() in unit), "")
+        if matched_location:
+            current_location = matched_location
+        location = current_location or "待补充地点"
+        people_text = pick_from_text(people, unit, "待补充人物", index)
+        product = pick_from_text(products, unit, "待补充产品", index)
+        matched_prop = next((str(item).strip() for item in props if str(item).strip() and str(item).strip() in unit), "")
+        prop_text = matched_prop or infer_prop_text(unit)
+        time_text = pick_from_text(times, unit, "待补充时间段", index)
+        focus = pick_from_text(selling_points, unit, "画面关系与情绪变化", index)
         shots.append(
             {
                 "no": str(index + 1).zfill(2),
-                "type": item[0],
-                "content": item[1],
-                "shotSize": item[2],
-                "camera": item[3],
+                "type": mock_shot_type(unit, index, len(units)),
+                "content": unit,
+                "shotSize": infer_mock_shot_size(unit, index, len(units)),
+                "camera": infer_mock_camera(unit, index),
                 "duration": f"{shot_duration}s",
-                "people": people[0] if people else "待补充人物",
+                "people": people_text,
                 "location": location,
-                "props": item[4],
-                "product": products[0] if products else "待补充产品",
-                "time": times[0] if times else "待补充时间段",
-                "dialogue": dialogue[0] if include_dialogue and dialogue else "无台词",
-                "narration": narration[0] if include_narration and narration else "无旁白",
-                "focus": item[5],
+                "props": prop_text,
+                "product": product,
+                "time": time_text,
+                "dialogue": pick_from_text(dialogue, unit, "无台词", index) if include_dialogue and dialogue else "无台词",
+                "narration": pick_from_text(narration, unit, "无旁白", index) if include_narration and narration else "无旁白",
+                "focus": focus,
             }
         )
     return {

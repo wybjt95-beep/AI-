@@ -364,27 +364,95 @@ function storyboardBank() {
   ];
 }
 
+function scriptUnits(text, maxUnits = 8) {
+  const source = String(text || "").replace(/\s+/g, " ").trim();
+  if (!source) return [];
+  const units = [];
+  source.split(/[。！？!?；;\n]+/).forEach((part) => {
+    const clean = part.trim().replace(/^[，,\s]+|[，,\s]+$/g, "");
+    if (!clean) return;
+    const clauses = clean.length > 42 ? clean.split(/[，,]/) : [clean];
+    clauses.forEach((clause) => {
+      const item = clause.trim();
+      if (!item) return;
+      const previous = units[units.length - 1];
+      if (previous && previous.length + item.length < 28) units[units.length - 1] = `${previous}，${item}`;
+      else units.push(item);
+    });
+  });
+  return units.slice(0, maxUnits);
+}
+
+function pickFromText(options, text, fallback, offset = 0) {
+  const values = unique(options || []);
+  if (!values.length) return fallback;
+  return values.find((item) => text.includes(item)) || values[offset % values.length];
+}
+
+function inferPropText(text, fallback = "环境元素") {
+  if (/树|草|河|湖|路/.test(text)) return "树木、路面、环境";
+  if (/电脑|屏幕|办公/.test(text)) return "电脑、书桌";
+  if (/杯|水|咖啡|饮料/.test(text)) return "杯子";
+  if (/书|资料|文件/.test(text)) return "书本、资料";
+  if (/手机|APP|界面/.test(text)) return "手机、界面";
+  return fallback;
+}
+
+function inferShotSize(text, index, total) {
+  if (/手|眼神|表情|电脑|手机|杯|道具|细节|特写/.test(text)) return index ? "特写" : "近景";
+  if (index === 0) return "远景";
+  if (index === total - 1) return "中景";
+  return ["中景", "近景", "中远景"][index % 3];
+}
+
+function inferCamera(text, index) {
+  if (/走|跑|穿过|移动|经过|骑|跟/.test(text)) return "跟拍";
+  if (/看|相视|对视|发现|望|笑/.test(text)) return "轻推至反应";
+  if (/放下|拿起|递|打开|启动/.test(text)) return "微距推进";
+  return ["固定镜头", "缓慢推进", "横向轻移", "小幅环绕"][index % 4];
+}
+
+function localShotType(text, index, total) {
+  if (index === 0) return "场景建立";
+  if (index === total - 1) return "情绪收束";
+  if (/电脑|手机|杯|道具|手|细节/.test(text)) return "细节强调";
+  if (/看|笑|相视|对话|说/.test(text)) return "关系反应";
+  return "动作推进";
+}
+
 function localStoryboardShots() {
   const duration = Math.max(1, Number(els.duration.value || 30));
-  const bank = storyboardBank();
-  const base = Math.floor(duration / bank.length);
-  let remain = duration - base * bank.length;
-  return bank.map((item, i) => ({
+  let units = scriptUnits(els.scriptInput.value);
+  if (!units.length) {
+    units = [
+      `在${first(state.detected.locations, "主要场景")}建立人物和空间关系`,
+      `围绕${first(state.detected.props, first(state.detected.product, "核心物件"))}呈现关键动作`,
+      "捕捉人物反应和情绪变化",
+      "用留白或稳定构图完成收束",
+    ];
+  }
+  const total = duration >= 15 ? Math.min(8, Math.max(4, units.length)) : Math.min(6, Math.max(3, units.length));
+  while (units.length < total) units.push(units[units.length - 1]);
+  units = units.slice(0, total);
+  const base = Math.floor(duration / units.length);
+  let remain = duration - base * units.length;
+  let currentLocation = first(state.detected.locations, "");
+  return units.map((unit, i) => ({
     id: `${Date.now()}-${i}`,
     no: String(i + 1).padStart(2, "0"),
-    type: item[0],
-    content: item[1],
-    shotSize: item[2],
-    camera: item[3],
+    type: localShotType(unit, i, units.length),
+    content: unit,
+    shotSize: inferShotSize(unit, i, units.length),
+    camera: inferCamera(unit, i),
     duration: `${base + (remain-- > 0 ? 1 : 0)}s`,
-    people: first(state.detected.people, "待补充人物"),
-    location: i >= 6 ? first(state.detected.locations.filter((x) => x.includes("办公楼")), first(state.detected.locations, "待补充地点")) : first(state.detected.locations, "待补充地点"),
-    props: item[4],
-    product: first(state.detected.product, "待补充产品"),
-    time: first(state.detected.times, "待补充时间段"),
-    dialogue: state.includeDialogue ? first(state.detected.dialogue, "无台词") : "无台词",
-    narration: state.includeNarration ? first(state.detected.narration, "无旁白") : "无旁白",
-    focus: item[5],
+    people: pickFromText(state.detected.people, unit, "待补充人物", i),
+    location: (currentLocation = state.detected.locations.find((item) => unit.includes(item)) || currentLocation || "待补充地点"),
+    props: state.detected.props.find((item) => unit.includes(item)) || inferPropText(unit),
+    product: pickFromText(state.detected.product, unit, "待补充产品", i),
+    time: pickFromText(state.detected.times, unit, "待补充时间段", i),
+    dialogue: state.includeDialogue ? pickFromText(state.detected.dialogue, unit, "无台词", i) : "无台词",
+    narration: state.includeNarration ? pickFromText(state.detected.narration, unit, "无旁白", i) : "无旁白",
+    focus: pickFromText(state.detected.sellingPoints, unit, "画面关系与情绪变化", i),
     status: "待确认",
     refName: "",
     refData: "",
@@ -736,25 +804,159 @@ function renderShots() {
   }).join("");
 }
 
+function compact(value, max = 18) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+function textBlob(shot) {
+  return [shot.content, shot.people, shot.location, shot.props, shot.product, shot.time, shot.focus, shot.dialogue, shot.narration].join(" ");
+}
+
+function hasAny(text, words) {
+  return words.some((word) => text.includes(word));
+}
+
+function hashText(text) {
+  let hash = 0;
+  String(text || "").split("").forEach((char) => {
+    hash = ((hash << 5) - hash + char.charCodeAt(0)) | 0;
+  });
+  return Math.abs(hash);
+}
+
+function boardPalette(seed) {
+  const style = els.boardStyle.value;
+  const tone = `${els.tone.value} ${els.visualStyle.value}`;
+  const warm = hasAny(tone, ["暖", "阳光", "温柔", "清晨"]);
+  const night = hasAny(tone, ["夜", "冷", "暗"]);
+  const realistic = style === "写实版";
+  const sketch = style === "线稿" || style === "火柴人";
+  return {
+    bg: night ? "#162033" : warm ? "#fff3dc" : "#edf6f4",
+    sky: night ? "#1c2840" : warm ? "#ffe3ad" : "#d9ebff",
+    ground: night ? "#263248" : warm ? "#e7d4ae" : "#d8e8df",
+    line: "#172528",
+    soft: realistic ? (warm ? "#f1be73" : "#83b7a7") : "#f8fbff",
+    accent: ["#215cff", "#0f9f6e", "#d96c2c", "#7a5cff"][seed % 4],
+    fill: realistic,
+    sketch,
+    stroke: style === "火柴人" ? 5 : 3,
+  };
+}
+
+function sceneBackgroundSvg(shot, palette, seed) {
+  const text = textBlob(shot);
+  const sun = hasAny(text, ["夜晚", "深夜", "夜"]) ? `<circle cx="560" cy="58" r="22" fill="#f4f0c9"/>` : `<circle cx="558" cy="58" r="24" fill="#ffd36f"/>`;
+  if (hasAny(text, ["公园", "园林", "树", "草", "湖", "河", "户外"])) {
+    const water = hasAny(text, ["河", "湖"]) ? `<path d="M0 260 C120 232 230 285 360 255 S555 228 640 258 L640 360 L0 360 Z" fill="#b8dceb" opacity=".8"/>` : "";
+    return `<rect width="640" height="360" fill="${palette.sky}"/>${sun}
+      <path d="M0 242 C130 210 240 230 350 250 S530 286 640 238 L640 360 L0 360 Z" fill="${palette.ground}"/>
+      ${water}
+      <path d="M58 245 C118 185 156 184 212 242" fill="none" stroke="${palette.line}" stroke-width="3" opacity=".35"/>
+      ${[70, 150, 480, 555].map((x, i) => `<g transform="translate(${x},${120 + (i % 2) * 18})"><path d="M28 105 V28" stroke="${palette.line}" stroke-width="7"/><circle cx="28" cy="24" r="${28 + (seed + i) % 13}" fill="${palette.soft}" stroke="${palette.line}" stroke-width="3"/></g>`).join("")}
+      <rect x="420" y="222" width="90" height="18" rx="4" fill="${palette.soft}" stroke="${palette.line}" stroke-width="3"/><path d="M438 240 V268 M492 240 V268" stroke="${palette.line}" stroke-width="3"/>`;
+  }
+  if (hasAny(text, ["书房", "书桌", "办公室", "办公", "电脑", "书", "室内"])) {
+    return `<rect width="640" height="360" fill="#f3f5f8"/>
+      <rect y="248" width="640" height="112" fill="#e2e6ea"/>
+      <rect x="48" y="60" width="118" height="172" fill="${palette.soft}" stroke="${palette.line}" stroke-width="3"/>
+      <rect x="474" y="54" width="112" height="94" fill="#d9ebff" stroke="${palette.line}" stroke-width="3"/>
+      ${[84, 122, 520].map((x, i) => `<line x1="${x}" y1="${76 + i * 44}" x2="${x + 42}" y2="${76 + i * 44}" stroke="${palette.line}" stroke-width="5" opacity=".55"/>`).join("")}
+      <rect x="150" y="224" width="340" height="34" rx="5" fill="#d8c4a1" stroke="${palette.line}" stroke-width="3"/>
+      <path d="M184 258 V330 M456 258 V330" stroke="${palette.line}" stroke-width="5"/>`;
+  }
+  if (hasAny(text, ["街", "路", "城市", "楼", "广场", "门店", "商场"])) {
+    return `<rect width="640" height="360" fill="${palette.sky}"/>${sun}
+      <path d="M0 270 H640 V360 H0 Z" fill="#d9dce2"/>
+      ${[48, 155, 462, 540].map((x, i) => `<rect x="${x}" y="${80 + (i % 2) * 34}" width="${72 + i * 7}" height="${170 - (i % 2) * 22}" fill="${palette.soft}" stroke="${palette.line}" stroke-width="3"/><path d="M${x + 18} ${112 + (i % 2) * 34} h36 M${x + 18} ${150 + (i % 2) * 34} h36 M${x + 18} ${188 + (i % 2) * 34} h36" stroke="${palette.line}" stroke-width="3" opacity=".38"/>`).join("")}
+      <path d="M34 312 H606" stroke="${palette.line}" stroke-width="3" opacity=".3" stroke-dasharray="30 18"/>`;
+  }
+  return `<rect width="640" height="360" fill="${palette.bg}"/>${sun}
+    <path d="M0 255 C128 228 230 238 340 263 S530 294 640 250 L640 360 L0 360 Z" fill="${palette.ground}"/>
+    <rect x="70" y="92" width="118" height="140" rx="4" fill="${palette.soft}" stroke="${palette.line}" stroke-width="3"/>
+    <rect x="452" y="100" width="96" height="132" rx="4" fill="${palette.soft}" stroke="${palette.line}" stroke-width="3"/>`;
+}
+
+function personSvg(x, y, scale, palette, variant = 0) {
+  const bodyFill = palette.fill ? (variant % 2 ? "#f1b0a0" : "#8eb8e6") : "none";
+  if (els.boardStyle.value === "火柴人") {
+    return `<g transform="translate(${x},${y}) scale(${scale})" stroke="${palette.line}" stroke-width="${palette.stroke}" fill="none" stroke-linecap="round">
+      <circle cx="26" cy="18" r="15"/><path d="M26 36 L24 88"/><path d="M24 58 L0 78"/><path d="M27 58 L58 76"/><path d="M24 88 L4 132"/><path d="M26 88 L56 132"/>
+    </g>`;
+  }
+  return `<g transform="translate(${x},${y}) scale(${scale})" stroke="${palette.line}" stroke-width="3" stroke-linejoin="round">
+    <circle cx="26" cy="18" r="15" fill="#f5d3bd"/>
+    <path d="M8 54 Q26 32 45 54 L54 102 Q28 118 0 102 Z" fill="${bodyFill}"/>
+    <path d="M9 60 L-8 86 M44 60 L66 82 M18 104 L8 139 M38 104 L52 139" fill="none" stroke-linecap="round"/>
+  </g>`;
+}
+
+function propSvg(shot, palette, close = false) {
+  const text = textBlob(shot);
+  const s = close ? 1.55 : 1;
+  const y = close ? 176 : 220;
+  if (hasAny(text, ["电脑", "屏幕", "笔记本"])) {
+    return `<g transform="translate(${close ? 214 : 278},${close ? 142 : y}) scale(${s})" stroke="${palette.line}" stroke-width="3" fill="${palette.fill ? "#c9d7ef" : "none"}">
+      <rect x="0" y="0" width="114" height="70" rx="5"/><path d="M20 82 H98 L112 104 H6 Z"/><line x1="20" y1="18" x2="92" y2="18"/><line x1="20" y1="38" x2="74" y2="38"/>
+    </g>`;
+  }
+  if (hasAny(text, ["杯", "水", "咖啡", "饮料"])) {
+    return `<g transform="translate(${close ? 300 : 398},${close ? 160 : y}) scale(${s})" stroke="${palette.line}" stroke-width="3" fill="${palette.fill ? "#f4f7fb" : "none"}">
+      <path d="M0 8 H60 L52 82 H8 Z"/><path d="M60 22 C96 20 94 68 55 64" fill="none"/><path d="M12 24 H50"/>
+    </g>`;
+  }
+  if (hasAny(text, ["书", "资料", "文件"])) {
+    return `<g transform="translate(${close ? 224 : 350},${close ? 170 : y + 16}) scale(${s})" stroke="${palette.line}" stroke-width="3" fill="${palette.fill ? "#ffe7a5" : "none"}">
+      <path d="M0 0 L82 12 V78 L0 64 Z"/><path d="M82 12 L118 0 V64 L82 78 Z"/><line x1="22" y1="24" x2="64" y2="30"/>
+    </g>`;
+  }
+  if (hasAny(text, ["手机", "APP", "界面"])) {
+    return `<g transform="translate(${close ? 280 : 388},${close ? 130 : y}) scale(${s})" stroke="${palette.line}" stroke-width="3" fill="${palette.fill ? "#e9f2ff" : "none"}">
+      <rect x="0" y="0" width="58" height="102" rx="10"/><circle cx="29" cy="88" r="4"/><line x1="14" y1="24" x2="44" y2="24"/><line x1="14" y1="42" x2="44" y2="42"/>
+    </g>`;
+  }
+  if (hasAny(text, ["车", "自行车", "电动车", "汽车"])) {
+    return `<g transform="translate(285,224)" stroke="${palette.line}" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M35 42 L98 18 L172 34 L220 58"/><circle cx="66" cy="76" r="27"/><circle cx="185" cy="76" r="27"/><path d="M132 28 L160 0 L202 8"/>
+    </g>`;
+  }
+  return `<g transform="translate(${close ? 270 : 360},${close ? 170 : y}) scale(${s})" stroke="${palette.line}" stroke-width="3" fill="${palette.fill ? "#f3d58b" : "none"}">
+    <rect x="0" y="0" width="88" height="70" rx="8"/><path d="M14 22 H72 M14 42 H54"/>
+  </g>`;
+}
+
+function cameraGuideSvg(camera, palette, id) {
+  const text = String(camera || "");
+  if (hasAny(text, ["跟", "横", "移"])) return `<path d="M80 58 H190" stroke="${palette.accent}" stroke-width="5" marker-end="url(#arrow-${id})"/><text x="82" y="48" font-family="Microsoft YaHei" font-size="13" fill="${palette.accent}">跟随移动</text>`;
+  if (hasAny(text, ["推", "推进"])) return `<path d="M560 62 C500 80 468 108 438 150" stroke="${palette.accent}" stroke-width="5" fill="none" marker-end="url(#arrow-${id})"/><text x="456" y="52" font-family="Microsoft YaHei" font-size="13" fill="${palette.accent}">镜头推进</text>`;
+  if (hasAny(text, ["拉", "远"])) return `<path d="M430 86 C492 72 532 58 588 42" stroke="${palette.accent}" stroke-width="5" fill="none" marker-end="url(#arrow-${id})"/><text x="442" y="112" font-family="Microsoft YaHei" font-size="13" fill="${palette.accent}">慢慢拉远</text>`;
+  if (hasAny(text, ["环", "绕", "摇"])) return `<path d="M472 72 C560 55 600 116 540 164 C486 208 402 174 424 112" stroke="${palette.accent}" stroke-width="5" fill="none" marker-end="url(#arrow-${id})"/><text x="454" y="54" font-family="Microsoft YaHei" font-size="13" fill="${palette.accent}">环绕/摇移</text>`;
+  return `<rect x="475" y="38" width="112" height="58" rx="7" fill="none" stroke="${palette.accent}" stroke-width="3"/><text x="494" y="73" font-family="Microsoft YaHei" font-size="13" fill="${palette.accent}">固定构图</text>`;
+}
+
 function boardSvg(shot, index) {
-  const ink = "#172528";
-  const fill = els.boardStyle.value === "写实版" ? "#dff1ea" : "#eef8f3";
-  const strokeWidth = els.boardStyle.value === "火柴人" ? 5 : 4;
-  const offset = (index % 4) * 12;
+  const blob = textBlob(shot);
+  const seed = hashText(blob || `${shot.no}-${index}`);
+  const palette = boardPalette(seed);
+  const close = /特写|近景/.test(String(shot.shotSize || "")) && hasAny(blob, ["手", "电脑", "杯", "手机", "书", "道具", "细节", "表情", "眼神"]);
+  const peopleCount = Math.min(3, Math.max(1, parseList(shot.people).filter((item) => !item.includes("待补充")).length || (hasAny(blob, ["两人", "母亲", "女主", "男主", "相视"]) ? 2 : 1)));
+  const people = close
+    ? `<path d="M118 258 C170 210 230 218 284 260" stroke="${palette.line}" stroke-width="13" fill="none" stroke-linecap="round" opacity=".7"/>`
+    : Array.from({ length: peopleCount }, (_, i) => personSvg(150 + i * 74 + (seed % 18), 140 + (i % 2) * 18, /远景|广角/.test(String(shot.shotSize || "")) ? .62 : .82, palette, i)).join("");
+  const focusBox = `<rect x="22" y="292" width="596" height="42" rx="8" fill="rgba(255,255,255,.72)" stroke="${palette.line}" stroke-width="2" opacity=".92"/>
+    <text x="38" y="318" font-family="Microsoft YaHei" font-size="14" fill="${palette.line}">场景：${esc(compact(shot.location, 12))} · 人物：${esc(compact(shot.people, 12))} · 道具：${esc(compact(shot.props, 12))}</text>`;
   return `<svg viewBox="0 0 640 360" xmlns="http://www.w3.org/2000/svg">
-    <rect width="640" height="360" fill="${fill}"/>
-    <path d="M0 260 C130 230 240 240 340 268 S530 300 640 255" fill="none" stroke="#6aa99a" stroke-width="5"/>
-    <path d="M36 306 H610" stroke="${ink}" stroke-width="3" opacity=".24" stroke-dasharray="28 16"/>
-    <rect x="54" y="70" width="92" height="150" fill="none" stroke="${ink}" stroke-width="3"/>
-    <rect x="190" y="105" width="76" height="116" fill="none" stroke="${ink}" stroke-width="3"/>
-    <rect x="476" y="78" width="88" height="144" fill="none" stroke="${ink}" stroke-width="3"/>
-    <g transform="translate(${118 + offset},150)" stroke="${ink}" stroke-width="${strokeWidth}" fill="none" stroke-linecap="round"><circle cx="26" cy="18" r="15"/><path d="M26 36 L24 88"/><path d="M24 58 L0 78"/><path d="M27 58 L58 76"/><path d="M24 88 L4 132"/><path d="M26 88 L56 132"/></g>
-    <g transform="translate(${265 + offset},210)" stroke="${ink}" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M35 42 L98 18 L172 34 L220 58"/><circle cx="66" cy="76" r="27"/><circle cx="185" cy="76" r="27"/><path d="M132 28 L160 0 L202 8"/></g>
-    <rect x="410" y="38" width="158" height="56" rx="7" fill="${fill}" stroke="${ink}" stroke-width="3"/>
-    <line x1="432" y1="58" x2="544" y2="58" stroke="${ink}" stroke-width="3"/>
-    <line x1="432" y1="75" x2="504" y2="75" stroke="${ink}" stroke-width="3"/>
-    <text x="24" y="38" font-family="Microsoft YaHei" font-size="21" fill="${ink}" font-weight="800">${esc(shot.no)} ${esc(shot.type)}</text>
-    <text x="24" y="330" font-family="Microsoft YaHei" font-size="15" fill="${ink}">${esc(els.boardStyle.value)} · ${esc(els.tone.value)} · 参考图非最终定稿</text>
+    <defs><marker id="arrow-${index}" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="${palette.accent}"/></marker></defs>
+    ${sceneBackgroundSvg(shot, palette, seed)}
+    ${people}
+    ${propSvg(shot, palette, close)}
+    ${cameraGuideSvg(shot.camera, palette, index)}
+    <rect x="18" y="18" width="284" height="42" rx="8" fill="rgba(255,255,255,.78)" stroke="${palette.line}" stroke-width="2"/>
+    <text x="34" y="45" font-family="Microsoft YaHei" font-size="20" fill="${palette.line}" font-weight="800">${esc(shot.no)} ${esc(compact(shot.type, 10))}</text>
+    <text x="318" y="45" font-family="Microsoft YaHei" font-size="15" fill="${palette.line}">${esc(compact(shot.shotSize, 8))} · ${esc(compact(shot.camera, 10))}</text>
+    ${focusBox}
+    <text x="24" y="350" font-family="Microsoft YaHei" font-size="13" fill="${palette.line}" opacity=".72">${esc(els.boardStyle.value)} · ${esc(compact(els.tone.value, 14))} · 按当前分镜内容生成的参考草图</text>
   </svg>`;
 }
 
