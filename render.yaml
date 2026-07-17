@@ -4,10 +4,6 @@ services:
     env: docker
     rootDir: "AI分镜拆解助手/网页平台"
     autoDeploy: true
-    disk:
-      name: ai-storyboard-data
-      mountPath: /data
-      sizeGB: 1
     envVars:
       - key: APP_ENV
         value: production

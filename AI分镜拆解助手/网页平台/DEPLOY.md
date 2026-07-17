@@ -9,6 +9,8 @@
 - 数据库：本地 SQLite，默认路径为 `.data/app.db`
 - 用户模型 Key：用户登录后自行配置，服务端加密保存
 
+当前仓库的 `render.yaml` 是免费体验版配置，没有绑定 Render 持久化磁盘。这样可以先部署打开，但 Render 重启或重新部署后，用户账号、项目看板和 API 配置可能会丢失。正式给多人长期使用时，建议改用 PostgreSQL，或在 Render 里增加持久化磁盘并把 `APP_DATA_DIR` 指向磁盘目录。
+
 ## 推荐部署方式
 
 优先使用支持 Docker 或 Python 后端的平台，例如：
@@ -60,8 +62,13 @@ http://127.0.0.1:5176/
 2. 连接 GitHub 仓库。
 3. 选择 Docker 部署，或直接使用仓库里的 Blueprint。
 4. 设置 `APP_SECRET` 环境变量。
-5. 确认持久化磁盘挂载到 `/data`。
+5. 免费体验版无需配置持久化磁盘。
 6. 部署完成后访问平台给出的 URL。
+
+如需正式长期保存数据，再新增以下能力之一：
+
+- Render 持久化磁盘：挂载到 `/data`，并保持 `APP_DATA_DIR=/data`。
+- 托管数据库：迁移 SQLite 到 PostgreSQL 或 MySQL。
 
 ## 上线前检查
 
