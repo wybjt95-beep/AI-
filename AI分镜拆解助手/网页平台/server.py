@@ -667,6 +667,111 @@ def tag_text(value, limit=3):
     return "、".join(tag_list(value, limit))
 
 
+DEFAULT_VISUAL_STYLE_TAGS = "真实电影摄影风格、高端TVC广告风格、都市生活方式风格"
+DEFAULT_COLOR_TONE_TAGS = "自然真实色调、中低对比度、自然肤色色调"
+
+
+def canonical_visual_style(payload):
+    return payload.get("overallVisualStyle") or payload.get("visualStyle") or ""
+
+
+def canonical_color_tone(payload):
+    return payload.get("overallColorTone") or payload.get("overallTone") or payload.get("tone") or ""
+
+
+def is_default_tag_value(value, default_value):
+    return tag_text(value, 3) == tag_text(default_value, 3)
+
+
+def explicit_visual_style(payload):
+    value = canonical_visual_style(payload)
+    if value and not is_default_tag_value(value, DEFAULT_VISUAL_STYLE_TAGS):
+        return tag_text(value, 3)
+    return ""
+
+
+def explicit_color_tone(payload):
+    value = canonical_color_tone(payload)
+    if value and not is_default_tag_value(value, DEFAULT_COLOR_TONE_TAGS):
+        return tag_text(value, 3)
+    return ""
+
+
+def contains_any(text, words):
+    return any(word in text for word in words)
+
+
+def recommend_visual_look(payload, analysis=None, script=""):
+    project = payload.get("project") or {}
+    analysis = analysis or payload.get("analysis") or {}
+    context = " ".join(
+        [
+            str(project.get("type") or ""),
+            str(project.get("style") or ""),
+            str(project.get("platform") or ""),
+            str(payload.get("globalNotes") or ""),
+            creativity_label(payload.get("creativity")),
+            script,
+            " ".join(str(item) for values in analysis.values() if isinstance(values, list) for item in values),
+        ]
+    )
+
+    style = explicit_visual_style(payload)
+    color_tone = explicit_color_tone(payload)
+    if not style:
+        if contains_any(context, ["工厂", "制造", "机械", "设备", "工程", "生产线", "工业", "车间"]):
+            style = "工业纪录片风格、智能制造宣传片风格、硬朗写实风格"
+        elif contains_any(context, ["汽车", "电动车", "车辆", "骑行", "驾驶", "通勤"]):
+            style = "电影级实拍风格、汽车广告风格、都市生活方式风格"
+        elif contains_any(context, ["AI", "人工智能", "科技", "数据", "软件", "APP", "平台", "智能"]):
+            style = "真实摄影风格、科技产品广告风格、极简科技风格"
+        elif contains_any(context, ["食品", "饮料", "咖啡", "餐", "早餐", "美食"]):
+            style = "商业摄影风格、食品广告风格、生活方式广告风格"
+        elif contains_any(context, ["美妆", "护肤", "口红", "香水", "时尚", "服装"]):
+            style = "产品商业摄影风格、美妆广告风格、时尚广告风格"
+        elif contains_any(context, ["家庭", "亲子", "母亲", "父亲", "孩子", "家中", "客厅", "温柔", "温情"]):
+            style = "自然实拍风格、家庭生活风格、温情故事风格"
+        elif contains_any(context, ["公园", "河边", "山", "森林", "户外", "自然", "治愈"]):
+            style = "生活方式摄影风格、自然治愈风格、清新文艺风格"
+        elif contains_any(context, ["复古", "怀旧", "年代", "老上海", "港风", "胶片", "VHS"]):
+            style = "老胶片电影风格、复古年代广告风格、生活方式摄影风格"
+        elif contains_any(context, ["潮流", "年轻", "社媒", "小红书", "抖音", "种草", "多巴胺"]):
+            style = "年轻化品牌风格、社交媒体视觉风格、生活方式广告风格"
+        elif contains_any(context, ["诗意", "梦境", "超现实", "实验", "意识流"]):
+            style = "视觉诗风格、艺术摄影风格、概念艺术风格"
+        else:
+            style = DEFAULT_VISUAL_STYLE_TAGS
+
+    if not color_tone:
+        if contains_any(context, ["工厂", "制造", "机械", "设备", "工程", "生产线", "工业", "车间"]):
+            color_tone = "工业蓝灰色调、金属质感色调、硬朗低饱和色调"
+        elif contains_any(context, ["汽车", "电动车", "车辆", "骑行", "驾驶", "通勤"]):
+            color_tone = "低饱和冷灰蓝色调、中低对比度、自然肤色色调"
+        elif contains_any(context, ["AI", "人工智能", "科技", "数据", "软件", "APP", "平台", "智能"]):
+            color_tone = "科技蓝色调、冷白科技色调、青绿色数字色调"
+        elif contains_any(context, ["食品", "饮料", "咖啡", "餐", "早餐", "美食"]):
+            color_tone = "奶油暖色调、高明度低饱和色调、自然柔和肤色"
+        elif contains_any(context, ["美妆", "护肤", "口红", "香水", "时尚", "服装"]):
+            color_tone = "清透自然色调、柔和粉彩色调、自然肤色色调"
+        elif contains_any(context, ["家庭", "亲子", "母亲", "父亲", "孩子", "家中", "客厅", "温柔", "温情"]):
+            color_tone = "奶油暖白色调、低对比自然色调、温馨家庭暖调"
+        elif contains_any(context, ["公园", "河边", "山", "森林", "户外", "自然", "治愈"]):
+            color_tone = "清透自然色调、自然植被绿色调、自然日光色调"
+        elif contains_any(context, ["复古", "怀旧", "年代", "老上海", "港风", "胶片", "VHS"]):
+            color_tone = "复古电影色调、泛黄色调、棕褐复古色调"
+        elif contains_any(context, ["夜", "霓虹", "赛博"]):
+            color_tone = "霓虹蓝粉色调、冷蓝紫色调、黑蓝科技色调"
+        elif contains_any(context, ["清新", "年轻", "社媒", "小红书", "抖音", "种草", "多巴胺"]):
+            color_tone = "清新明亮色调、高明度低饱和色调、轻盈空气感色调"
+        else:
+            color_tone = DEFAULT_COLOR_TONE_TAGS
+
+    return {
+        "overallVisualStyle": tag_text(style, 3),
+        "overallColorTone": tag_text(color_tone, 3),
+    }
+
+
 def pick(mapping, *keys, default=None):
     if not isinstance(mapping, dict):
         return default
@@ -924,11 +1029,12 @@ def mock_split(payload, source="mock"):
                 "focus": focus,
             }
         )
+    look = recommend_visual_look(payload, analysis, script)
     return {
         "source": source,
         "shots": shots,
-        "overallVisualStyle": tag_text(payload.get("visualStyle") or project.get("style") or "真实电影摄影风格、高端TVC广告风格、都市生活方式风格", 3),
-        "overallTone": tag_text(payload.get("tone") or "自然暖白日光色调、中低对比度、自然肤色与暖色灯光点缀", 3),
+        "overallVisualStyle": look["overallVisualStyle"],
+        "overallColorTone": look["overallColorTone"],
         "warning": "当前未配置真实模型，已使用后端本地演示拆分镜。",
     }
 
@@ -938,13 +1044,17 @@ def build_prompt(payload):
     project = payload.get("project") or {}
     analysis = payload.get("analysis") or {}
     script = str(payload.get("script") or "").strip()
+    current_visual_style = explicit_visual_style(payload)
+    current_color_tone = explicit_color_tone(payload)
     project_context = {
         **project,
         "projectStyleTags": tag_list(project.get("style"), 6),
-        "tone": tag_text(payload.get("tone"), 3),
-        "visualStyle": tag_text(payload.get("visualStyle"), 3),
-        "toneTags": tag_list(payload.get("tone"), 3),
-        "visualStyleTags": tag_list(payload.get("visualStyle"), 3),
+        "overallVisualStyle": current_visual_style,
+        "overallColorTone": current_color_tone,
+        "tone": current_color_tone,
+        "visualStyle": current_visual_style,
+        "colorToneTags": tag_list(current_color_tone, 3),
+        "visualStyleTags": tag_list(current_visual_style, 3),
         "boardStyle": payload.get("boardStyle") or "",
         "creativity": payload.get("creativity") or "",
         "creativityInstruction": creativity_label(payload.get("creativity")),
@@ -1017,14 +1127,14 @@ def look_tags_from_parsed(parsed):
         3,
     )
     tone = tag_text(
-        pick(parsed, "overallTone", "tone", "colorTone", "toneTags", "整体色调", default=[]),
+        pick(parsed, "overallColorTone", "overallTone", "tone", "colorTone", "colorToneTags", "toneTags", "整体色调", default=[]),
         3,
     )
     result = {}
     if visual_style:
         result["overallVisualStyle"] = visual_style
     if tone:
-        result["overallTone"] = tone
+        result["overallColorTone"] = tone
     return result
 
 
@@ -1224,8 +1334,8 @@ def image_size_for_aspect(aspect_value):
 def image_prompt_for_shot(shot, payload, index):
     board_style = str(payload.get("boardStyle") or "写实版")
     is_realistic = board_style == "写实版"
-    tone = tag_text(payload.get("tone"), 3) if is_realistic else ""
-    visual_style = tag_text(payload.get("visualStyle"), 3) if is_realistic else ""
+    tone = tag_text(canonical_color_tone(payload), 3) if is_realistic else ""
+    visual_style = tag_text(canonical_visual_style(payload), 3) if is_realistic else ""
     project = payload.get("project") or {}
     project_style = tag_text(project.get("style"), 3) if is_realistic else ""
     _, _, aspect_label = parse_project_aspect(project.get("aspect"))
@@ -1419,6 +1529,9 @@ def call_openai_compatible(payload, api_config):
         "shots": normalize_shots(shots_from_parsed(parsed)),
     }
     result.update(look_tags_from_parsed(parsed))
+    fallback_look = recommend_visual_look(payload, payload.get("analysis") or {}, str(payload.get("script") or ""))
+    result.setdefault("overallVisualStyle", fallback_look["overallVisualStyle"])
+    result.setdefault("overallColorTone", fallback_look["overallColorTone"])
     return result
 
 
@@ -1480,8 +1593,8 @@ def export_project_rows(payload):
         ["画幅比例", project.get("aspect")],
         ["项目风格", project.get("style")],
         ["目标平台", project.get("platform")],
-        ["整体色调", payload.get("tone")],
-        ["整体风格", payload.get("visualStyle")],
+        ["整体色调", canonical_color_tone(payload)],
+        ["整体风格", canonical_visual_style(payload)],
         ["分镜图类型", payload.get("boardStyle")],
         ["创意强度", payload.get("creativityLabel") or payload.get("creativity")],
         ["指定镜头数量", payload.get("shotCount") or "由系统判断"],
