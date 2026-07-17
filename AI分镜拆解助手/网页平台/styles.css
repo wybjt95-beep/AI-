@@ -865,6 +865,22 @@ textarea {
   word-break: break-word;
 }
 
+.status-edit {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  margin: 10px 0;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255,255,255,.72);
+}
+
+.status-edit input {
+  min-height: 38px;
+  padding: 9px 11px;
+  border-radius: 12px;
+}
+
 .notice {
   padding: 12px;
   border-radius: 14px;
@@ -1178,7 +1194,7 @@ textarea {
 
 .shot-meta-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 10px;
 }
 
@@ -1782,6 +1798,21 @@ dialog::backdrop {
 
 .creativity-control {
   position: relative;
+}
+
+.creativity-control output {
+  display: inline-grid;
+  place-items: center;
+  min-width: 42px;
+  min-height: 24px;
+  margin-left: 6px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 950;
 }
 
 .creativity-control input[type="range"] {

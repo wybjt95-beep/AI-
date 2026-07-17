@@ -34,13 +34,13 @@ const els = {
   loginPage: $("#loginPage"), platformShell: $("#platformShell"),
   dashboard: $("#dashboard"), setup: $("#setup"), workbench: $("#workbench"),
   projectList: $("#projectList"),
-  projectName: $("#projectName"), projectType: $("#projectType"), duration: $("#duration"), aspect: $("#aspect"), style: $("#style"), platform: $("#platform"),
+  projectName: $("#projectName"), projectType: $("#projectType"), duration: $("#duration"), workbenchDuration: $("#workbenchDuration"), aspect: $("#aspect"), style: $("#style"), platform: $("#platform"),
   scriptInput: $("#scriptInput"), globalNotes: $("#globalNotes"), shotTarget: $("#shotTarget"),
   uploadBox: $("#uploadBox"), fileInput: $("#fileInput"), fileStatus: $("#fileStatus"),
   analysisGrid: $("#analysisGrid"), shots: $("#shots"), boards: $("#boards"),
   shotCount: $("#shotCount"), confirmedCount: $("#confirmedCount"), boardCount: $("#boardCount"), summary: $("#summary"), notice: $("#notice"),
   boardStyle: $("#boardStyle"), tone: $("#tone"), visualStyle: $("#visualStyle"), creativity: $("#creativity"),
-  creativityText: $("#creativityText"), apiDialog: $("#apiDialog"), toast: $("#toast"),
+  creativityText: $("#creativityText"), creativityValue: $("#creativityValue"), apiDialog: $("#apiDialog"), toast: $("#toast"),
   apiProvider: $("#apiProvider"), apiBaseUrl: $("#apiBaseUrl"), apiKey: $("#apiKey"), apiTextModel: $("#apiTextModel"),
   apiImageModel: $("#apiImageModel"), apiTemperature: $("#apiTemperature"), apiStatus: $("#apiStatus"),
   authBtn: $("#authBtn"), authForm: $("#authForm"), authName: $("#authName"), authEmail: $("#authEmail"),
@@ -100,16 +100,40 @@ function requestedShotCount() {
   return Math.min(24, Math.max(1, Math.round(value)));
 }
 
+function normalizeCreativityValue(value, scale = 100) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 60;
+  if (scale !== 100 && numeric >= 0 && numeric <= 3) return [0, 35, 60, 85][Math.round(numeric)] ?? 60;
+  return Math.min(100, Math.max(0, Math.round(numeric)));
+}
+
 function creativityLabel(value = els.creativity?.value) {
-  const level = Number(value);
-  if (level <= 0) return "当前：保守拆解";
-  if (level === 1) return "当前：稳妥优化";
-  if (level === 2) return "当前：平衡发挥";
-  return "当前：脑洞更大";
+  const level = normalizeCreativityValue(value, 100);
+  if (level <= 20) return `当前：${level}/100 · 保守拆解`;
+  if (level <= 45) return `当前：${level}/100 · 稳妥优化`;
+  if (level <= 75) return `当前：${level}/100 · 平衡发挥`;
+  return `当前：${level}/100 · 脑洞更大`;
 }
 
 function updateCreativityUi() {
-  if (els.creativityText) els.creativityText.textContent = creativityLabel();
+  const value = normalizeCreativityValue(els.creativity?.value, 100);
+  if (els.creativity) els.creativity.value = value;
+  if (els.creativityValue) els.creativityValue.textContent = value;
+  if (els.creativityText) els.creativityText.textContent = creativityLabel(value);
+}
+
+function readProjectDuration() {
+  const source = state.screen === "workbench" && els.workbenchDuration?.value
+    ? els.workbenchDuration.value
+    : els.duration.value;
+  const value = Number(source || 30);
+  return Number.isFinite(value) ? Math.max(1, Math.round(value)) : 30;
+}
+
+function syncDurationInputs(value) {
+  const duration = Number.isFinite(Number(value)) ? Math.max(1, Math.round(Number(value))) : 30;
+  if (els.duration) els.duration.value = duration;
+  if (els.workbenchDuration) els.workbenchDuration.value = duration;
 }
 
 function syncChoiceButtons(targetId) {
@@ -277,6 +301,7 @@ function projectSnapshot() {
     overallColorTone,
     overallVisualStyle,
     creativity: els.creativity.value,
+    creativityScale: 100,
   };
 }
 
@@ -376,7 +401,13 @@ function restoreProject(record) {
   state.detected = normalizeAnalysisData(record.detected || {});
   state.includeDialogue = Boolean(record.includeDialogue);
   state.includeNarration = Boolean(record.includeNarration);
-  state.shots = Array.isArray(record.shots) ? record.shots : [];
+  state.shots = (Array.isArray(record.shots) ? record.shots : []).map((shot, index) => ({
+    ...shot,
+    id: shot.id || `${Date.now()}-${index}`,
+    no: String(shot.no || index + 1).padStart(2, "0"),
+    angle: textValue(shot.angle, "正面平视"),
+    status: shot.status || "待确认",
+  }));
   state.boardsGenerated = Boolean(record.boardsGenerated);
   applyProject(state.project);
   els.scriptInput.value = record.script || "";
@@ -385,7 +416,7 @@ function restoreProject(record) {
   els.boardStyle.value = record.boardStyle || "线稿";
   els.tone.value = tagText(record.overallColorTone || record.tone || DEFAULT_TONE, 3) || DEFAULT_TONE;
   els.visualStyle.value = tagText(record.overallVisualStyle || record.visualStyle || state.project.style || DEFAULT_VISUAL_STYLE, 3) || DEFAULT_VISUAL_STYLE;
-  els.creativity.value = record.creativity || "2";
+  els.creativity.value = normalizeCreativityValue(record.creativity ?? 60, record.creativityScale || 4);
   updateCreativityUi();
   syncAllChoiceButtons();
   renderLookTagEditors();
@@ -414,7 +445,7 @@ function resetWorkspace() {
 	  els.boardStyle.value = "线稿";
 	  els.tone.value = DEFAULT_TONE;
 	  els.visualStyle.value = DEFAULT_VISUAL_STYLE;
-	  els.creativity.value = "2";
+	  els.creativity.value = "60";
 	  updateCreativityUi();
 	  syncAllChoiceButtons();
 	  renderLookTagEditors();
@@ -449,11 +480,12 @@ function syncProjectFromForm() {
 	  state.project = {
 	    name: els.projectName.value || "未命名项目",
 	    type: els.projectType.value || "未填写",
-	    duration: Math.max(1, Number(els.duration.value || 30)),
+	    duration: readProjectDuration(),
 	    aspect: els.aspect.value || "未填写",
 	    style: tagText(els.style.value) || "未填写",
 	    platform: els.platform.value || "未填写",
 	  };
+	  syncDurationInputs(state.project.duration);
 	  if (!els.visualStyle.value.trim() && els.style.value) els.visualStyle.value = tagText(els.style.value, 3);
 	  syncAllChoiceButtons();
 	  renderLookTagEditors();
@@ -463,7 +495,7 @@ function syncProjectFromForm() {
 function applyProject(project) {
   els.projectName.value = project.name || "";
   els.projectType.value = project.type || "";
-  els.duration.value = project.duration || 30;
+  syncDurationInputs(project.duration || 30);
 	  els.aspect.value = project.aspect || "";
 	  els.style.value = project.style || "";
 	  els.platform.value = project.platform || "";
@@ -583,6 +615,15 @@ function inferCamera(text, index) {
   return ["固定镜头", "缓慢推进", "横向轻移", "小幅环绕"][index % 4];
 }
 
+function inferAngle(text, index) {
+  if (/肩|背影|身后|跟随/.test(text)) return "过肩视角";
+  if (/桌面|俯拍|摆放|书桌|电脑|手机|产品|餐|杯/.test(text)) return "俯视角度";
+  if (/高楼|大楼|天空|仰望|宏大/.test(text)) return "低机位仰拍";
+  if (/手|眼神|表情|细节|特写/.test(text)) return "平视近角度";
+  if (index === 0) return "正面平视";
+  return ["正面平视", "侧面视角", "三分之四侧前方", "过肩视角"][index % 4];
+}
+
 function localShotType(text, index, total) {
   if (index === 0) return "场景建立";
   if (index === total - 1) return "情绪收束";
@@ -592,7 +633,7 @@ function localShotType(text, index, total) {
 }
 
 function localStoryboardShots() {
-  const duration = Math.max(1, Number(els.duration.value || 30));
+  const duration = readProjectDuration();
   const targetCount = requestedShotCount();
   let units = scriptUnits(els.scriptInput.value, targetCount || 8);
   if (!units.length) {
@@ -616,6 +657,7 @@ function localStoryboardShots() {
     type: localShotType(unit, i, units.length),
     content: unit,
     shotSize: inferShotSize(unit, i, units.length),
+    angle: inferAngle(unit, i),
     camera: inferCamera(unit, i),
     duration: `${base + (remain-- > 0 ? 1 : 0)}s`,
     people: pickFromText(state.detected.people, unit, "待补充人物", i),
@@ -645,6 +687,7 @@ function normalizeShot(shot, index) {
     type: textValue(shot.type, "镜头"),
     content: textValue(shot.content, "请补充画面内容。"),
     shotSize: textValue(shot.shotSize, "中景"),
+    angle: textValue(shot.angle, "正面平视"),
     camera: textValue(shot.camera, "固定镜头"),
     duration: textValue(shot.duration, "3s"),
     people: textValue(shot.people, "待补充人物"),
@@ -761,6 +804,7 @@ function applyGeneratedLook(data) {
 }
 
 async function splitStoryboard() {
+  syncProjectFromForm();
   syncAnalysisFromInputs();
   const script = els.scriptInput.value.trim();
   if (!script) return showToast("请先输入或上传脚本。");
@@ -997,7 +1041,7 @@ function renderShots() {
       <div class="shot-main">
         <textarea data-field="content">${esc(shot.content)}</textarea>
         <div class="shot-layout">
-          <div class="shot-meta-row">${input("shotSize", shot.shotSize, "景别")}${input("duration", shot.duration, "时长")}${input("camera", shot.camera, "运镜")}</div>
+          <div class="shot-meta-row">${input("shotSize", shot.shotSize, "景别")}${input("duration", shot.duration, "时长")}${input("angle", shot.angle, "角度")}${input("camera", shot.camera, "运镜")}</div>
           <div class="shot-entity-row">
             ${multi("people", shot.people, "人物", state.detected.people)}
             ${multi("location", shot.location, "场景", state.detected.locations)}
@@ -1026,7 +1070,7 @@ function compact(value, max = 18) {
 }
 
 function textBlob(shot) {
-  return [shot.content, shot.people, shot.location, shot.props, shot.product, shot.time, shot.focus, shot.dialogue, shot.narration].join(" ");
+  return [shot.content, shot.shotSize, shot.angle, shot.camera, shot.people, shot.location, shot.props, shot.product, shot.time, shot.focus, shot.dialogue, shot.narration].join(" ");
 }
 
 function hasAny(text, words) {
@@ -1221,7 +1265,7 @@ function boardSvg(shot, index) {
     ${cameraGuideSvg(shot.camera, palette, index)}
     <rect x="18" y="18" width="284" height="42" rx="8" fill="rgba(255,255,255,.78)" stroke="${palette.line}" stroke-width="2"/>
     <text x="34" y="45" font-family="Microsoft YaHei" font-size="20" fill="${palette.line}" font-weight="800">${esc(shot.no)} ${esc(compact(shot.type, 10))}</text>
-    <text x="318" y="45" font-family="Microsoft YaHei" font-size="15" fill="${palette.line}">${esc(compact(shot.shotSize, 8))} · ${esc(compact(shot.camera, 10))}</text>
+    <text x="318" y="45" font-family="Microsoft YaHei" font-size="15" fill="${palette.line}">${esc(compact(shot.shotSize, 6))} · ${esc(compact(shot.angle, 7))} · ${esc(compact(shot.camera, 8))}</text>
     ${focusBox}
     <text x="24" y="350" font-family="Microsoft YaHei" font-size="13" fill="${palette.line}" opacity=".72">${esc(footer)}</text>
   </svg>`;
@@ -1251,7 +1295,7 @@ function renderBoards() {
         <p>${esc(shot.content)}</p>
         ${shot.refData ? `<div class="board-refbox"><img class="board-ref" src="${shot.refData}" alt="${esc(shot.refName)}" /><span>参考图：${esc(shot.refName)}</span></div>` : ""}
         ${warning ? `<p class="board-warning">${esc(warning)}</p>` : ""}
-        <div class="board-tags"><span class="tag">${esc(shot.shotSize)}</span><span class="tag">${esc(shot.camera)}</span><span class="tag">${esc(els.boardStyle.value)}</span><span class="tag">${sourceTag}</span>${hasAiImage && shot.boardModel ? `<span class="tag">${esc(shot.boardModel)}</span>` : ""}<span class="tag">${shot.refData ? "含参考图" : "未上传参考图"}</span></div>
+        <div class="board-tags"><span class="tag">${esc(shot.shotSize)}</span><span class="tag">${esc(shot.angle)}</span><span class="tag">${esc(shot.camera)}</span><span class="tag">${esc(els.boardStyle.value)}</span><span class="tag">${sourceTag}</span>${hasAiImage && shot.boardModel ? `<span class="tag">${esc(shot.boardModel)}</span>` : ""}<span class="tag">${shot.refData ? "含参考图" : "未上传参考图"}</span></div>
       </div>
     </article>`;
   }).join("");
@@ -1276,6 +1320,7 @@ function imagePayload(confirmed) {
       type: shot.type,
       content: shot.content,
       shotSize: shot.shotSize,
+      angle: shot.angle,
       camera: shot.camera,
       duration: shot.duration,
       people: shot.people,
@@ -1317,6 +1362,7 @@ function exportPayload(format) {
       type: shot.type,
       content: shot.content,
       shotSize: shot.shotSize,
+      angle: shot.angle,
       camera: shot.camera,
       duration: shot.duration,
       people: shot.people,
@@ -1348,6 +1394,7 @@ function filenameFromDisposition(header, fallback) {
 async function exportProject(format, button) {
   if (!canUseBackend()) return showToast("请使用打开本地网页.command 或线上地址导出文件。");
   if (!state.shots.length) return showToast("请先拆解分镜，再导出文件。");
+  syncProjectFromForm();
   const buttonText = button.textContent;
   button.disabled = true;
   button.textContent = "导出中...";
@@ -1393,6 +1440,7 @@ async function requestStoryboardImages(confirmed) {
 }
 
 async function generateBoards() {
+  syncProjectFromForm();
   const confirmed = state.shots.filter((shot) => shot.status === "已确认");
   if (!confirmed.length) return showToast("请先确认至少一个镜头。");
   await hydrateMissingReferenceMeta();
@@ -1472,6 +1520,7 @@ function syncAnalysisFromInputs() {
 }
 
 async function analyzeScript() {
+  syncProjectFromForm();
   const script = els.scriptInput.value.trim();
   if (!script) return showToast("请先输入或上传脚本。");
   const analyzeButton = $("#analyze");
@@ -1513,7 +1562,7 @@ function openSample() {
   els.shotTarget.value = "";
   els.tone.value = DEFAULT_TONE;
   els.visualStyle.value = DEFAULT_VISUAL_STYLE;
-	  els.creativity.value = "2";
+	  els.creativity.value = "60";
 	  updateCreativityUi();
 	  syncAllChoiceButtons();
 	  renderLookTagEditors();
@@ -1532,7 +1581,7 @@ function addShot() {
   const i = state.shots.length;
   state.shots.push({
     id: `${Date.now()}-${i}`, no: String(i + 1).padStart(2, "0"), type: "新增镜头", content: "请补充画面内容。",
-    shotSize: "中景", duration: "3s", camera: "固定镜头", people: first(state.detected.people, "待补充人物"),
+    shotSize: "中景", duration: "3s", angle: "正面平视", camera: "固定镜头", people: first(state.detected.people, "待补充人物"),
     location: first(state.detected.locations, "待补充地点"), props: first(state.detected.props, "待补充道具"),
     product: first(state.detected.product, "待补充产品"), time: first(state.detected.times, "待补充时间段"),
     dialogue: "无台词", narration: "无旁白", focus: "待补充", status: "待确认", refName: "", refData: "", refMeta: null,
@@ -1694,6 +1743,7 @@ function bindEvents() {
   els.globalNotes.addEventListener("input", scheduleAutoSave);
   els.shotTarget.addEventListener("input", scheduleAutoSave);
   els.creativity.addEventListener("input", () => { updateCreativityUi(); scheduleAutoSave(); });
+  els.workbenchDuration.addEventListener("input", () => { syncProjectFromForm(); scheduleAutoSave(); });
   els.analysisGrid.addEventListener("input", () => { syncAnalysisFromInputs(); scheduleAutoSave(); });
   els.analysisGrid.addEventListener("change", () => { syncAnalysisFromInputs(); scheduleAutoSave(); });
   els.shots.addEventListener("input", (event) => {

@@ -247,6 +247,7 @@
             <div class="metric"><span>已确认</span><strong id="confirmedCount">0</strong></div>
             <div class="metric"><span>分镜图</span><strong id="boardCount">0</strong></div>
             <dl id="summary"></dl>
+            <label class="status-edit"><span>项目时长（秒）</span><input id="workbenchDuration" type="number" min="1" value="30" /></label>
             <p class="notice" id="notice">先导入脚本，再做剧本分析。</p>
           </aside>
 
@@ -277,7 +278,7 @@
               <div class="script-tools">
                 <label><span>分镜图类型</span><select id="boardStyle"><option>线稿</option><option>火柴人</option><option>写实版</option></select></label>
                 <label><span>镜头数量</span><input id="shotTarget" type="number" min="1" max="24" placeholder="留空由系统判断" /></label>
-                <label class="creativity-control"><span>创意强度</span><input id="creativity" type="range" min="0" max="3" step="1" value="2" /><small id="creativityText">当前：平衡发挥</small></label>
+                <label class="creativity-control"><span>创意强度 <output id="creativityValue">60</output></span><input id="creativity" type="range" min="0" max="100" step="1" value="60" /><small id="creativityText">当前：60/100 · 平衡发挥</small></label>
                 <button class="primary" id="analyze">下一步：剧本分析</button>
               </div>
             </section>

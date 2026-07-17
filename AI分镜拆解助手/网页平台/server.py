@@ -840,12 +840,13 @@ def creativity_label(value):
     try:
         level = int(float(value))
     except (TypeError, ValueError):
-        level = 2
-    if level <= 0:
+        level = 60
+    level = max(0, min(100, level))
+    if level <= 20:
         return "保守：镜头拆解贴近原脚本，少做额外创意延展。"
-    if level == 1:
+    if level <= 45:
         return "稳妥：允许轻微优化镜头顺序和画面表达。"
-    if level == 2:
+    if level <= 75:
         return "平衡：在不偏离脚本的前提下提供可讨论的构图和动作创意。"
     return "脑洞：允许更有个性的镜头角度、转场和视觉表达，但必须服务脚本目的。"
 
@@ -892,6 +893,20 @@ def infer_mock_camera(text, index):
     if any(word in text for word in ["放下", "拿起", "递", "打开", "启动"]):
         return "微距推进"
     return ["固定镜头", "缓慢推进", "横向轻移", "小幅环绕"][index % 4]
+
+
+def infer_mock_angle(text, index):
+    if any(word in text for word in ["肩", "背影", "身后", "跟随"]):
+        return "过肩视角"
+    if any(word in text for word in ["桌面", "俯拍", "摆放", "书桌", "电脑", "手机", "产品", "餐", "杯"]):
+        return "俯视角度"
+    if any(word in text for word in ["高楼", "大楼", "天空", "仰望", "宏大"]):
+        return "低机位仰拍"
+    if any(word in text for word in ["手", "眼神", "表情", "细节", "特写"]):
+        return "平视近角度"
+    if index == 0:
+        return "正面平视"
+    return ["正面平视", "侧面视角", "三分之四侧前方", "过肩视角"][index % 4]
 
 
 def mock_shot_type(text, index, total):
@@ -1017,6 +1032,7 @@ def mock_split(payload, source="mock"):
                 "type": mock_shot_type(unit, index, len(units)),
                 "content": unit,
                 "shotSize": infer_mock_shot_size(unit, index, len(units)),
+                "angle": infer_mock_angle(unit, index),
                 "camera": infer_mock_camera(unit, index),
                 "duration": f"{shot_duration}s",
                 "people": people_text,
@@ -1149,6 +1165,7 @@ def normalize_shots(raw_shots):
                 "type": as_text(pick(raw, "type", "title", "name", "镜头类型", "镜头名称", default="镜头"), "镜头"),
                 "content": as_text(pick(raw, "content", "description", "visual", "画面内容", "画面", "镜头内容", default="请补充画面内容"), "请补充画面内容"),
                 "shotSize": as_text(pick(raw, "shotSize", "shot_size", "size", "景别", default="中景"), "中景"),
+                "angle": as_text(pick(raw, "angle", "viewpoint", "cameraAngle", "shotAngle", "拍摄角度", "角度", "视角", "机位角度", default="正面平视"), "正面平视"),
                 "duration": as_text(pick(raw, "duration", "timeLength", "时长", default="3s"), "3s"),
                 "camera": as_text(pick(raw, "camera", "movement", "cameraMove", "运镜", "镜头运动", default="固定镜头"), "固定镜头"),
                 "people": as_text(pick(raw, "people", "characters", "person", "人物", "角色", default="待补充人物"), "待补充人物"),
@@ -1369,6 +1386,7 @@ def image_prompt_for_shot(shot, payload, index):
         "镜号": shot.get("no") or str(index + 1).zfill(2),
         "画面内容": shot.get("content") or "",
         "景别": shot.get("shotSize") or "",
+        "拍摄角度": shot.get("angle") or "",
         "运镜": shot.get("camera") or "",
         "人物": shot.get("people") or "",
         "场景": shot.get("location") or "",
@@ -1624,6 +1642,7 @@ def export_shot_headers():
         "镜头类型",
         "画面内容",
         "景别",
+        "角度",
         "运镜",
         "时长",
         "人物",
@@ -1657,6 +1676,7 @@ def export_shot_rows(payload):
                 shot.get("type"),
                 shot.get("content"),
                 shot.get("shotSize"),
+                shot.get("angle"),
                 shot.get("camera"),
                 shot.get("duration"),
                 shot.get("people"),
@@ -1952,7 +1972,7 @@ def ppt_slides(payload):
         for shot in chunk:
             lines.extend(
                 [
-                    f"{shot.get('no')} {export_text(shot.get('type'), '镜头')}｜{export_text(shot.get('shotSize'), '景别')}｜{export_text(shot.get('camera'), '运镜')}｜{export_text(shot.get('duration'), '时长')}",
+                    f"{shot.get('no')} {export_text(shot.get('type'), '镜头')}｜{export_text(shot.get('shotSize'), '景别')}｜{export_text(shot.get('angle'), '角度')}｜{export_text(shot.get('camera'), '运镜')}｜{export_text(shot.get('duration'), '时长')}",
                     f"画面：{short_text(shot.get('content'), 80)}",
                     f"人物/场景/道具：{short_text(shot.get('people'), 20)} / {short_text(shot.get('location'), 20)} / {short_text(shot.get('props'), 24)}",
                     "",
