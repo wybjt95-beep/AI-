@@ -241,6 +241,7 @@ function restoreProject(record) {
   renderSummary();
   setScreen("workbench");
   state.hydrating = false;
+  hydrateMissingReferenceMeta();
 }
 
 function resetWorkspace() {
@@ -456,6 +457,7 @@ function localStoryboardShots() {
     status: "待确认",
     refName: "",
     refData: "",
+    refMeta: null,
   }));
 }
 
@@ -482,8 +484,9 @@ function normalizeShot(shot, index) {
     narration: textValue(shot.narration, "无旁白"),
     focus: textValue(shot.focus, "待补充"),
     status: "待确认",
-    refName: "",
-    refData: "",
+    refName: shot.refName || "",
+    refData: shot.refData || "",
+    refMeta: shot.refMeta || null,
   };
 }
 
@@ -845,6 +848,44 @@ function boardPalette(seed) {
   };
 }
 
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, Number.isFinite(value) ? value : min));
+}
+
+function shotComposition(shot, seed) {
+  const meta = shot.refMeta && typeof shot.refMeta === "object" ? shot.refMeta : null;
+  const defaultX = 0.34 + ((seed % 5) * 0.08);
+  const defaultY = /特写|近景/.test(String(shot.shotSize || "")) ? 0.42 : 0.56;
+  return {
+    hasReference: Boolean(meta),
+    subjectX: clamp(Number(meta?.subjectX ?? defaultX), 0.18, 0.82),
+    subjectY: clamp(Number(meta?.subjectY ?? defaultY), 0.22, 0.74),
+    balance: meta?.balance || "center",
+    aspect: Number(meta?.aspect || 1.78),
+    brightness: Number(meta?.brightness || 0.62),
+    warmth: Number(meta?.warmth || 0.5),
+  };
+}
+
+function compositionLabel(composition) {
+  const horizontal = composition.subjectX < 0.4 ? "主体偏左" : composition.subjectX > 0.6 ? "主体偏右" : "主体居中";
+  const vertical = composition.subjectY < 0.42 ? "上方留白" : composition.subjectY > 0.62 ? "低机位/下方主体" : "中部构图";
+  return `${horizontal}，${vertical}`;
+}
+
+function compositionGuideSvg(composition, palette) {
+  if (!composition.hasReference) return "";
+  const x = 64 + composition.subjectX * 512;
+  const y = 64 + composition.subjectY * 184;
+  return `<g opacity=".58">
+    <line x1="213" y1="0" x2="213" y2="360" stroke="${palette.accent}" stroke-width="1.5" stroke-dasharray="6 8"/>
+    <line x1="426" y1="0" x2="426" y2="360" stroke="${palette.accent}" stroke-width="1.5" stroke-dasharray="6 8"/>
+    <line x1="0" y1="120" x2="640" y2="120" stroke="${palette.accent}" stroke-width="1.5" stroke-dasharray="6 8"/>
+    <circle cx="${x}" cy="${y}" r="34" fill="none" stroke="${palette.accent}" stroke-width="4"/>
+    <text x="24" y="282" font-family="Microsoft YaHei" font-size="13" fill="${palette.accent}">参考图构图：${esc(compositionLabel(composition))} · 已重新绘制</text>
+  </g>`;
+}
+
 function sceneBackgroundSvg(shot, palette, seed) {
   const text = textBlob(shot);
   const sun = hasAny(text, ["夜晚", "深夜", "夜"]) ? `<circle cx="560" cy="58" r="22" fill="#f4f0c9"/>` : `<circle cx="558" cy="58" r="24" fill="#ffd36f"/>`;
@@ -892,36 +933,42 @@ function personSvg(x, y, scale, palette, variant = 0) {
   </g>`;
 }
 
-function propSvg(shot, palette, close = false) {
+function propSvg(shot, palette, close = false, composition = null) {
   const text = textBlob(shot);
   const s = close ? 1.55 : 1;
-  const y = close ? 176 : 220;
+  const subjectX = Number(composition?.subjectX ?? 0.48);
+  const subjectY = Number(composition?.subjectY ?? 0.54);
+  const propSide = subjectX < 0.52 ? 1 : -1;
+  const baseX = close
+    ? clamp(240 + subjectX * 110, 150, 360)
+    : clamp(300 + propSide * 120 + (subjectX - 0.5) * 60, 120, 475);
+  const y = close ? clamp(128 + subjectY * 80, 125, 205) : clamp(205 + subjectY * 36, 205, 245);
   if (hasAny(text, ["电脑", "屏幕", "笔记本"])) {
-    return `<g transform="translate(${close ? 214 : 278},${close ? 142 : y}) scale(${s})" stroke="${palette.line}" stroke-width="3" fill="${palette.fill ? "#c9d7ef" : "none"}">
+    return `<g transform="translate(${baseX},${close ? y - 24 : y}) scale(${s})" stroke="${palette.line}" stroke-width="3" fill="${palette.fill ? "#c9d7ef" : "none"}">
       <rect x="0" y="0" width="114" height="70" rx="5"/><path d="M20 82 H98 L112 104 H6 Z"/><line x1="20" y1="18" x2="92" y2="18"/><line x1="20" y1="38" x2="74" y2="38"/>
     </g>`;
   }
   if (hasAny(text, ["杯", "水", "咖啡", "饮料"])) {
-    return `<g transform="translate(${close ? 300 : 398},${close ? 160 : y}) scale(${s})" stroke="${palette.line}" stroke-width="3" fill="${palette.fill ? "#f4f7fb" : "none"}">
+    return `<g transform="translate(${baseX + 34},${close ? y : y + 2}) scale(${s})" stroke="${palette.line}" stroke-width="3" fill="${palette.fill ? "#f4f7fb" : "none"}">
       <path d="M0 8 H60 L52 82 H8 Z"/><path d="M60 22 C96 20 94 68 55 64" fill="none"/><path d="M12 24 H50"/>
     </g>`;
   }
   if (hasAny(text, ["书", "资料", "文件"])) {
-    return `<g transform="translate(${close ? 224 : 350},${close ? 170 : y + 16}) scale(${s})" stroke="${palette.line}" stroke-width="3" fill="${palette.fill ? "#ffe7a5" : "none"}">
+    return `<g transform="translate(${baseX},${close ? y + 4 : y + 18}) scale(${s})" stroke="${palette.line}" stroke-width="3" fill="${palette.fill ? "#ffe7a5" : "none"}">
       <path d="M0 0 L82 12 V78 L0 64 Z"/><path d="M82 12 L118 0 V64 L82 78 Z"/><line x1="22" y1="24" x2="64" y2="30"/>
     </g>`;
   }
   if (hasAny(text, ["手机", "APP", "界面"])) {
-    return `<g transform="translate(${close ? 280 : 388},${close ? 130 : y}) scale(${s})" stroke="${palette.line}" stroke-width="3" fill="${palette.fill ? "#e9f2ff" : "none"}">
+    return `<g transform="translate(${baseX + 42},${close ? y - 38 : y - 8}) scale(${s})" stroke="${palette.line}" stroke-width="3" fill="${palette.fill ? "#e9f2ff" : "none"}">
       <rect x="0" y="0" width="58" height="102" rx="10"/><circle cx="29" cy="88" r="4"/><line x1="14" y1="24" x2="44" y2="24"/><line x1="14" y1="42" x2="44" y2="42"/>
     </g>`;
   }
   if (hasAny(text, ["车", "自行车", "电动车", "汽车"])) {
-    return `<g transform="translate(285,224)" stroke="${palette.line}" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    return `<g transform="translate(${clamp(baseX - 70, 170, 360)},224)" stroke="${palette.line}" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round">
       <path d="M35 42 L98 18 L172 34 L220 58"/><circle cx="66" cy="76" r="27"/><circle cx="185" cy="76" r="27"/><path d="M132 28 L160 0 L202 8"/>
     </g>`;
   }
-  return `<g transform="translate(${close ? 270 : 360},${close ? 170 : y}) scale(${s})" stroke="${palette.line}" stroke-width="3" fill="${palette.fill ? "#f3d58b" : "none"}">
+  return `<g transform="translate(${baseX},${close ? y : y}) scale(${s})" stroke="${palette.line}" stroke-width="3" fill="${palette.fill ? "#f3d58b" : "none"}">
     <rect x="0" y="0" width="88" height="70" rx="8"/><path d="M14 22 H72 M14 42 H54"/>
   </g>`;
 }
@@ -939,18 +986,22 @@ function boardSvg(shot, index) {
   const blob = textBlob(shot);
   const seed = hashText(blob || `${shot.no}-${index}`);
   const palette = boardPalette(seed);
+  const composition = shotComposition(shot, seed);
   const close = /特写|近景/.test(String(shot.shotSize || "")) && hasAny(blob, ["手", "电脑", "杯", "手机", "书", "道具", "细节", "表情", "眼神"]);
   const peopleCount = Math.min(3, Math.max(1, parseList(shot.people).filter((item) => !item.includes("待补充")).length || (hasAny(blob, ["两人", "母亲", "女主", "男主", "相视"]) ? 2 : 1)));
+  const personX = clamp(66 + composition.subjectX * 430, 70, 450);
+  const personY = clamp(82 + composition.subjectY * 112, 108, 172);
   const people = close
-    ? `<path d="M118 258 C170 210 230 218 284 260" stroke="${palette.line}" stroke-width="13" fill="none" stroke-linecap="round" opacity=".7"/>`
-    : Array.from({ length: peopleCount }, (_, i) => personSvg(150 + i * 74 + (seed % 18), 140 + (i % 2) * 18, /远景|广角/.test(String(shot.shotSize || "")) ? .62 : .82, palette, i)).join("");
+    ? `<path d="M${personX - 68} ${personY + 116} C${personX - 20} ${personY + 64} ${personX + 50} ${personY + 72} ${personX + 108} ${personY + 118}" stroke="${palette.line}" stroke-width="13" fill="none" stroke-linecap="round" opacity=".7"/>`
+    : Array.from({ length: peopleCount }, (_, i) => personSvg(personX + i * 62 - (peopleCount - 1) * 28, personY + (i % 2) * 14, /远景|广角/.test(String(shot.shotSize || "")) ? .62 : .82, palette, i)).join("");
   const focusBox = `<rect x="22" y="292" width="596" height="42" rx="8" fill="rgba(255,255,255,.72)" stroke="${palette.line}" stroke-width="2" opacity=".92"/>
     <text x="38" y="318" font-family="Microsoft YaHei" font-size="14" fill="${palette.line}">场景：${esc(compact(shot.location, 12))} · 人物：${esc(compact(shot.people, 12))} · 道具：${esc(compact(shot.props, 12))}</text>`;
   return `<svg viewBox="0 0 640 360" xmlns="http://www.w3.org/2000/svg">
     <defs><marker id="arrow-${index}" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="${palette.accent}"/></marker></defs>
     ${sceneBackgroundSvg(shot, palette, seed)}
+    ${compositionGuideSvg(composition, palette)}
     ${people}
-    ${propSvg(shot, palette, close)}
+    ${propSvg(shot, palette, close, composition)}
     ${cameraGuideSvg(shot.camera, palette, index)}
     <rect x="18" y="18" width="284" height="42" rx="8" fill="rgba(255,255,255,.78)" stroke="${palette.line}" stroke-width="2"/>
     <text x="34" y="45" font-family="Microsoft YaHei" font-size="20" fill="${palette.line}" font-weight="800">${esc(shot.no)} ${esc(compact(shot.type, 10))}</text>
@@ -1044,7 +1095,7 @@ function addShot() {
     shotSize: "中景", duration: "3s", camera: "固定镜头", people: first(state.detected.people, "待补充人物"),
     location: first(state.detected.locations, "待补充地点"), props: first(state.detected.props, "待补充道具"),
     product: first(state.detected.product, "待补充产品"), time: first(state.detected.times, "待补充时间段"),
-    dialogue: "无台词", narration: "无旁白", focus: "待补充", status: "待确认", refName: "", refData: "",
+    dialogue: "无台词", narration: "无旁白", focus: "待补充", status: "待确认", refName: "", refData: "", refMeta: null,
   });
   renderShots(); renderSummary(); saveCurrentProject();
 }
@@ -1056,6 +1107,76 @@ function readAsDataUrl(file) {
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(file);
   });
+}
+
+function loadImage(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("参考图读取失败"));
+    image.src = dataUrl;
+  });
+}
+
+async function analyzeReferenceImage(dataUrl) {
+  const image = await loadImage(dataUrl);
+  const canvas = document.createElement("canvas");
+  const width = 28;
+  const height = 16;
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(image, 0, 0, width, height);
+  const pixels = ctx.getImageData(0, 0, width, height).data;
+  let total = 0;
+  let sx = 0;
+  let sy = 0;
+  let bright = 0;
+  let warm = 0;
+  let left = 0;
+  let right = 0;
+  for (let i = 0; i < pixels.length; i += 4) {
+    const px = (i / 4) % width;
+    const py = Math.floor(i / 4 / width);
+    const r = pixels[i];
+    const g = pixels[i + 1];
+    const b = pixels[i + 2];
+    const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+    const saturation = (Math.max(r, g, b) - Math.min(r, g, b)) / 255;
+    const mass = Math.max(0.04, (1 - lum) * 0.75 + saturation * 0.35);
+    total += mass;
+    sx += (px + 0.5) * mass;
+    sy += (py + 0.5) * mass;
+    bright += lum;
+    warm += (r - b + 255) / 510;
+    if (px < width / 2) left += mass;
+    else right += mass;
+  }
+  const subjectX = total ? sx / total / width : 0.5;
+  const subjectY = total ? sy / total / height : 0.52;
+  return {
+    subjectX: Number(subjectX.toFixed(3)),
+    subjectY: Number(subjectY.toFixed(3)),
+    aspect: Number((image.width / image.height).toFixed(3)),
+    brightness: Number((bright / (pixels.length / 4)).toFixed(3)),
+    warmth: Number((warm / (pixels.length / 4)).toFixed(3)),
+    balance: left > right * 1.18 ? "left" : right > left * 1.18 ? "right" : "center",
+    extractedAt: new Date().toISOString(),
+  };
+}
+
+async function hydrateMissingReferenceMeta() {
+  const pending = state.shots.filter((shot) => shot.refData && !shot.refMeta);
+  if (!pending.length) return;
+  for (const shot of pending) {
+    try {
+      shot.refMeta = await analyzeReferenceImage(shot.refData);
+    } catch (error) {
+      console.warn(error);
+    }
+  }
+  if (state.boardsGenerated) renderBoards();
+  saveCurrentProject();
 }
 
 function bindEvents() {
@@ -1094,8 +1215,9 @@ function bindEvents() {
   $("#split").addEventListener("click", splitStoryboard);
   $("#addShot").addEventListener("click", addShot);
   $("#confirmAll").addEventListener("click", () => { state.shots.forEach((s) => s.status = "已确认"); state.boardsGenerated = false; renderShots(); renderBoards(); saveCurrentProject(); });
-  $("#generate").addEventListener("click", () => {
+  $("#generate").addEventListener("click", async () => {
     if (!state.shots.some((s) => s.status === "已确认")) return showToast("请先确认至少一个镜头。");
+    await hydrateMissingReferenceMeta();
     state.boardsGenerated = true; renderBoards(); saveCurrentProject(); showToast("分镜图已生成。");
   });
   $("#clearScript").addEventListener("click", () => { els.scriptInput.value = ""; state.shots = []; state.boardsGenerated = false; renderShots(); renderBoards(); saveCurrentProject(); });
@@ -1154,11 +1276,19 @@ function bindEvents() {
     const index = Number(event.target.dataset.ref);
     const file = event.target.files?.[0];
     if (!file || !file.type.startsWith("image/")) return showToast("请上传图片文件。");
-    state.shots[index].refData = await readAsDataUrl(file);
+    const dataUrl = await readAsDataUrl(file);
+    state.shots[index].refData = dataUrl;
     state.shots[index].refName = file.name;
+    try {
+      state.shots[index].refMeta = await analyzeReferenceImage(dataUrl);
+    } catch (error) {
+      console.warn(error);
+      state.shots[index].refMeta = null;
+      showToast("参考图已上传，但构图分析失败。");
+    }
     if (state.shots[index].status === "已确认") state.shots[index].status = "待确认";
     state.boardsGenerated = false;
-    renderShots(); renderBoards(); saveCurrentProject(); showToast("参考图已上传。");
+    renderShots(); renderBoards(); saveCurrentProject(); showToast("参考图已上传，已提取构图参考。");
   });
   document.querySelectorAll("[data-style]").forEach((btn) => btn.addEventListener("click", () => { els.boardStyle.value = btn.dataset.style; renderBoards(); saveCurrentProject(); }));
   ["projectName", "projectType", "duration", "aspect", "style", "platform"].forEach((id) => $(`#${id}`).addEventListener("input", () => { syncProjectFromForm(); scheduleAutoSave(); }));
