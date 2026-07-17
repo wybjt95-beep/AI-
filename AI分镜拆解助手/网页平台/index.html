@@ -10,17 +10,30 @@
     <main class="app">
       <section class="login-page" id="loginPage">
         <div class="login-copy">
+          <span class="doodle doodle-star"></span>
+          <span class="doodle doodle-target"></span>
           <span class="brand-mark">镜</span>
           <p class="eyebrow">Storyboard Lab</p>
           <h2>AI分镜拆解助手</h2>
           <p>帮助你快速拆解分镜脚本。</p>
           <div class="login-points">
-            <span>剧本分析</span>
-            <span>分镜确认</span>
-            <span>分镜图参考</span>
+            <span data-sub="深入理解脚本内容">剧本分析</span>
+            <span data-sub="智能拆解镜头结构">分镜拆解</span>
+            <span data-sub="提供专业分镜参考">分镜参考</span>
+          </div>
+          <div class="login-storyboard" aria-hidden="true">
+            <div class="paper-sheet">
+              <article><strong>SC.01</strong><span></span><i></i></article>
+              <article><strong>SC.02</strong><span></span><i></i></article>
+              <article><strong>SC.03</strong><span></span><i></i></article>
+              <article><strong>SC.04</strong><span></span><i></i></article>
+            </div>
+            <div class="pencil-sketch"></div>
           </div>
         </div>
         <form class="login-card" id="authForm">
+          <span class="card-corner left"></span>
+          <span class="card-corner right"></span>
           <div>
             <p class="eyebrow">Account</p>
             <h3>登录 / 注册</h3>
@@ -55,10 +68,17 @@
         </header>
 
         <section class="hero">
+          <span class="hero-doodle one"></span>
+          <span class="hero-doodle two"></span>
           <div>
             <p class="eyebrow">Final MVP</p>
             <h2>先确认分镜，再生成可讨论的分镜图</h2>
             <p>最终版聚焦剧本分析可编辑、分镜确认、参考图上传和火柴人/线稿/写实版分镜图输出。</p>
+          </div>
+          <div class="hero-strip" aria-hidden="true">
+            <span>SC.01</span>
+            <span>SC.02</span>
+            <span>SC.03</span>
           </div>
         </section>
 
