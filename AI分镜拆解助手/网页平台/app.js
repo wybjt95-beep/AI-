@@ -21,10 +21,12 @@ const els = {
   dashboard: $("#dashboard"), setup: $("#setup"), workbench: $("#workbench"),
   projectList: $("#projectList"),
   projectName: $("#projectName"), projectType: $("#projectType"), duration: $("#duration"), aspect: $("#aspect"), style: $("#style"), platform: $("#platform"),
-  scriptInput: $("#scriptInput"), uploadBox: $("#uploadBox"), fileInput: $("#fileInput"), fileStatus: $("#fileStatus"),
+  scriptInput: $("#scriptInput"), globalNotes: $("#globalNotes"), shotTarget: $("#shotTarget"),
+  uploadBox: $("#uploadBox"), fileInput: $("#fileInput"), fileStatus: $("#fileStatus"),
   analysisGrid: $("#analysisGrid"), shots: $("#shots"), boards: $("#boards"),
   shotCount: $("#shotCount"), confirmedCount: $("#confirmedCount"), boardCount: $("#boardCount"), summary: $("#summary"), notice: $("#notice"),
-  boardStyle: $("#boardStyle"), tone: $("#tone"), visualStyle: $("#visualStyle"), creativity: $("#creativity"), apiDialog: $("#apiDialog"), toast: $("#toast"),
+  boardStyle: $("#boardStyle"), tone: $("#tone"), visualStyle: $("#visualStyle"), creativity: $("#creativity"),
+  creativityText: $("#creativityText"), apiDialog: $("#apiDialog"), toast: $("#toast"),
   apiProvider: $("#apiProvider"), apiBaseUrl: $("#apiBaseUrl"), apiKey: $("#apiKey"), apiTextModel: $("#apiTextModel"),
   apiImageModel: $("#apiImageModel"), apiTemperature: $("#apiTemperature"), apiStatus: $("#apiStatus"),
   authBtn: $("#authBtn"), authForm: $("#authForm"), authName: $("#authName"), authEmail: $("#authEmail"),
@@ -70,6 +72,24 @@ function first(items, fallback) {
   return items[0] || fallback;
 }
 
+function requestedShotCount() {
+  const value = Number(els.shotTarget?.value || "");
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return Math.min(24, Math.max(1, Math.round(value)));
+}
+
+function creativityLabel(value = els.creativity?.value) {
+  const level = Number(value);
+  if (level <= 0) return "当前：保守拆解";
+  if (level === 1) return "当前：稳妥优化";
+  if (level === 2) return "当前：平衡发挥";
+  return "当前：脑洞更大";
+}
+
+function updateCreativityUi() {
+  if (els.creativityText) els.creativityText.textContent = creativityLabel();
+}
+
 function newProjectId() {
   return `project-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
@@ -110,6 +130,7 @@ function hasProjectContent() {
   return Boolean(
     state.projectId
     || els.scriptInput.value.trim()
+    || els.globalNotes.value.trim()
     || state.shots.length
     || Object.values(state.detected).some((items) => Array.isArray(items) && items.length)
   );
@@ -121,6 +142,8 @@ function projectSnapshot() {
     updatedAt: new Date().toISOString(),
     project: { ...state.project },
     script: els.scriptInput.value,
+    globalNotes: els.globalNotes.value,
+    shotTarget: els.shotTarget.value,
     detected: normalizeAnalysisData(state.detected),
     includeDialogue: state.includeDialogue,
     includeNarration: state.includeNarration,
@@ -129,6 +152,7 @@ function projectSnapshot() {
     boardStyle: els.boardStyle.value,
     tone: els.tone.value,
     visualStyle: els.visualStyle.value,
+    creativity: els.creativity.value,
   };
 }
 
@@ -232,9 +256,13 @@ function restoreProject(record) {
   state.boardsGenerated = Boolean(record.boardsGenerated);
   applyProject(state.project);
   els.scriptInput.value = record.script || "";
+  els.globalNotes.value = record.globalNotes || "";
+  els.shotTarget.value = record.shotTarget || "";
   els.boardStyle.value = record.boardStyle || "线稿";
   els.tone.value = record.tone || "清爽蓝绿";
   els.visualStyle.value = record.visualStyle || state.project.style || "真实广告";
+  els.creativity.value = record.creativity || "2";
+  updateCreativityUi();
   renderAnalysis();
   renderShots();
   renderBoards();
@@ -255,14 +283,23 @@ function resetWorkspace() {
   state.boardsGenerated = false;
   applyProject(state.project);
   els.scriptInput.value = "";
+  els.globalNotes.value = "";
+  els.shotTarget.value = "";
   els.boardStyle.value = "线稿";
   els.tone.value = "清爽蓝绿";
   els.visualStyle.value = "真实广告";
+  els.creativity.value = "2";
+  updateCreativityUi();
   renderAnalysis();
   renderShots();
   renderBoards();
   renderSummary();
   state.hydrating = false;
+}
+
+function startNewProjectSetup() {
+  resetWorkspace();
+  setScreen("setup");
 }
 
 function setScreen(screen) {
@@ -305,10 +342,10 @@ function applyProject(project) {
 
 function detectTerms(script) {
   const has = (word) => script.includes(word);
-  const people = unique(["年轻上班族", "主人公", "主角", "用户", "顾客", "年轻女性", "年轻男性", "女性用户", "男性用户", "学生", "妈妈", "孩子", "老人", "员工", "同事", "朋友", "家人", "店员", "客户", "讲述者"].filter(has));
+  const people = unique(["年轻上班族", "主人公", "主角", "女主", "男主", "母亲", "父亲", "用户", "顾客", "年轻女性", "年轻男性", "女性用户", "男性用户", "女生", "男生", "女士", "男士", "学生", "妈妈", "孩子", "老人", "员工", "同事", "朋友", "家人", "店员", "客户", "讲述者"].filter(has));
   const product = unique(["新能源电动车", "健康饮食APP", "电动车", "车辆", "汽车", "手机", "APP", "小程序", "咖啡", "饮料", "护肤品", "课程", "产品", "服务"].filter(has));
-  const locations = unique(["办公楼前", "城市街道", "通勤路口", "城市道路", "路口", "办公室", "会议室", "家中", "客厅", "厨房", "门店", "商场", "校园", "公园", "地铁站", "室内", "户外"].filter(has));
-  const props = unique(["智能仪表", "车把", "启动键", "车轮", "头盔", "背包", "电量", "速度", "品牌口号", "手机", "电脑", "杯子", "海报", "包装", "屏幕", "早餐", "食物", "界面"].filter(has));
+  const locations = unique(["办公楼前", "城市街道", "通勤路口", "城市道路", "路口", "办公室", "会议室", "书房", "河边公园", "河边", "公园", "家中", "客厅", "厨房", "门店", "商场", "校园", "地铁站", "室内", "户外"].filter(has));
+  const props = unique(["智能仪表", "车把", "启动键", "车轮", "头盔", "背包", "电量", "速度", "品牌口号", "手机", "电脑", "笔记本电脑", "水杯", "杯子", "书桌", "书本", "海报", "包装", "屏幕", "早餐", "食物", "界面"].filter(has));
   const times = unique(["清晨", "上午", "中午", "下午", "傍晚", "夜晚", "白天", "深夜"].filter(has));
   const sellingPoints = unique(["轻便", "安全", "智能", "平稳", "安静", "清晰", "高效", "便捷", "舒适", "可靠", "省时", "专业", "年轻", "高级"].filter(has));
   const dialogue = [...script.matchAll(/[“"『「]([^”"』」]{2,80})[”"』」]/g)].map((m) => m[1]);
@@ -423,7 +460,8 @@ function localShotType(text, index, total) {
 
 function localStoryboardShots() {
   const duration = Math.max(1, Number(els.duration.value || 30));
-  let units = scriptUnits(els.scriptInput.value);
+  const targetCount = requestedShotCount();
+  let units = scriptUnits(els.scriptInput.value, targetCount || 8);
   if (!units.length) {
     units = [
       `在${first(state.detected.locations, "主要场景")}建立人物和空间关系`,
@@ -432,12 +470,13 @@ function localStoryboardShots() {
       "用留白或稳定构图完成收束",
     ];
   }
-  const total = duration >= 15 ? Math.min(8, Math.max(4, units.length)) : Math.min(6, Math.max(3, units.length));
+  const total = targetCount || (duration >= 15 ? Math.min(8, Math.max(4, units.length)) : Math.min(6, Math.max(3, units.length)));
   while (units.length < total) units.push(units[units.length - 1]);
   units = units.slice(0, total);
   const base = Math.floor(duration / units.length);
   let remain = duration - base * units.length;
   let currentLocation = first(state.detected.locations, "");
+  const brief = els.globalNotes.value.trim();
   return units.map((unit, i) => ({
     id: `${Date.now()}-${i}`,
     no: String(i + 1).padStart(2, "0"),
@@ -453,7 +492,7 @@ function localStoryboardShots() {
     time: pickFromText(state.detected.times, unit, "待补充时间段", i),
     dialogue: state.includeDialogue ? pickFromText(state.detected.dialogue, unit, "无台词", i) : "无台词",
     narration: state.includeNarration ? pickFromText(state.detected.narration, unit, "无旁白", i) : "无旁白",
-    focus: pickFromText(state.detected.sellingPoints, unit, "画面关系与情绪变化", i),
+    focus: pickFromText(state.detected.sellingPoints, unit, brief ? `结合创作要求：${brief}` : "画面关系与情绪变化", i),
     status: "待确认",
     refName: "",
     refData: "",
@@ -501,6 +540,9 @@ function splitPayload() {
     tone: els.tone.value,
     visualStyle: els.visualStyle.value,
     creativity: els.creativity.value,
+    creativityLabel: creativityLabel(),
+    shotCount: els.shotTarget.value.trim(),
+    globalNotes: els.globalNotes.value.trim(),
   };
 }
 
@@ -508,6 +550,9 @@ function analysisPayload() {
   return {
     script: els.scriptInput.value.trim(),
     project: state.project,
+    creativity: els.creativity.value,
+    shotCount: els.shotTarget.value.trim(),
+    globalNotes: els.globalNotes.value.trim(),
   };
 }
 
@@ -699,9 +744,11 @@ async function loadSession() {
 
 async function submitAuth(mode) {
   if (!canUseBackend()) return showToast("请使用打开本地网页.command 后再登录。");
+  const identifier = els.authName.value.trim() || els.authEmail.value.trim();
   const payload = {
     name: els.authName.value.trim(),
     email: els.authEmail.value.trim(),
+    identifier,
     password: els.authPassword.value,
   };
   const button = mode === "login" ? els.loginBtn : els.registerBtn;
@@ -716,13 +763,20 @@ async function submitAuth(mode) {
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "账号操作失败");
+    els.authPassword.value = "";
+    if (mode === "register") {
+      state.currentUser = null;
+      updateAuthUi(data.config);
+      els.authStatus.textContent = data.message || "注册成功，请使用用户名或邮箱登录。";
+      showToast("注册成功，请登录。");
+      return;
+    }
     state.currentUser = data.user;
     updateAuthUi(data.config);
-    els.authPassword.value = "";
     await loadRemoteProjects();
     setScreen("dashboard");
-    saveCurrentProject();
-    showToast(mode === "login" ? "登录成功。" : "注册成功。");
+    if (hasProjectContent()) saveCurrentProject();
+    showToast("登录成功。");
   } catch (error) {
     console.warn(error);
     els.authStatus.textContent = error.message || "账号操作失败。";
@@ -800,6 +854,7 @@ function renderShots() {
       <div class="shot-side">
         <span class="status-pill ${cls}">${shot.status}</span>
         <button class="mini" data-action="confirm">确认此镜头</button>
+        <button class="mini" data-action="unconfirm">取消确认</button>
         <button class="mini" data-action="revise">标记修改</button>
         <button class="mini" data-action="delete">删除</button>
       </div>
@@ -1048,6 +1103,9 @@ function imagePayload(confirmed) {
     boardStyle: els.boardStyle.value,
     tone: els.tone.value,
     visualStyle: els.visualStyle.value,
+    creativity: els.creativity.value,
+    shotCount: els.shotTarget.value.trim(),
+    globalNotes: els.globalNotes.value.trim(),
     shots: confirmed.map((shot) => ({
       no: shot.no,
       type: shot.type,
@@ -1196,6 +1254,10 @@ function openSample() {
   state.projectId = newProjectId();
   applyProject({ name: "30秒新能源电动车广告", type: "广告片", duration: 30, aspect: "9:16", style: "真实广告", platform: "抖音" });
   els.scriptInput.value = sampleScript;
+  els.globalNotes.value = "";
+  els.shotTarget.value = "";
+  els.creativity.value = "2";
+  updateCreativityUi();
   state.detected = detectTerms(sampleScript);
   state.shots = [];
   state.boardsGenerated = false;
@@ -1308,7 +1370,7 @@ function bindEvents() {
   $("#apiSave").addEventListener("click", saveApiConfig);
   els.dashboard.addEventListener("click", async (event) => {
     if (event.target.id === "openSample") return openSample();
-    if (event.target.id === "openNew") return setScreen("setup");
+    if (event.target.id === "openNew") return startNewProjectSetup();
     if (event.target.id === "apiCardBtn") { els.apiDialog.showModal(); loadApiConfig(); return; }
     const openId = event.target.dataset.openProject;
     if (openId) {
@@ -1326,7 +1388,7 @@ function bindEvents() {
     }
   });
   $("#toDashboard").addEventListener("click", () => { saveCurrentProject(); setScreen("dashboard"); });
-  $("#newProject").addEventListener("click", () => setScreen("setup"));
+  $("#newProject").addEventListener("click", startNewProjectSetup);
   $("#backDashboard").addEventListener("click", () => setScreen("dashboard"));
   $("#createProject").addEventListener("click", () => { state.projectId = newProjectId(); syncProjectFromForm(); setScreen("workbench"); saveCurrentProject(); });
   $("#sampleBtn").addEventListener("click", openSample);
@@ -1351,6 +1413,9 @@ function bindEvents() {
     }
   });
   els.scriptInput.addEventListener("input", scheduleAutoSave);
+  els.globalNotes.addEventListener("input", scheduleAutoSave);
+  els.shotTarget.addEventListener("input", scheduleAutoSave);
+  els.creativity.addEventListener("input", () => { updateCreativityUi(); scheduleAutoSave(); });
   els.analysisGrid.addEventListener("input", () => { syncAnalysisFromInputs(); scheduleAutoSave(); });
   els.analysisGrid.addEventListener("change", () => { syncAnalysisFromInputs(); scheduleAutoSave(); });
   els.shots.addEventListener("input", (event) => {
@@ -1379,6 +1444,7 @@ function bindEvents() {
     const index = Number(event.target.closest(".shot-card").dataset.index);
     const shot = state.shots[index];
     if (action === "confirm") shot.status = "已确认";
+    if (action === "unconfirm") shot.status = "待确认";
     if (action === "revise") shot.status = "需修改";
     if (action === "delete") {
       state.shots.splice(index, 1);
@@ -1417,5 +1483,6 @@ applyProject(state.project);
 renderAnalysis();
 renderShots();
 renderBoards();
+updateCreativityUi();
 setScreen("login");
 loadSession();

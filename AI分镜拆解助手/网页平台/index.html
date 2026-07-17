@@ -12,6 +12,8 @@
         <div class="login-copy">
           <span class="doodle doodle-star"></span>
           <span class="doodle doodle-target"></span>
+          <span class="doodle doodle-arrow"></span>
+          <span class="doodle doodle-curve"></span>
           <span class="brand-mark">镜</span>
           <p class="eyebrow">Storyboard Lab</p>
           <h2>AI分镜拆解助手</h2>
@@ -22,31 +24,77 @@
             <span data-sub="提供专业分镜参考">分镜参考</span>
           </div>
           <div class="login-storyboard" aria-hidden="true">
-            <div class="paper-sheet">
-              <article><strong>SC.01</strong><span></span><i></i></article>
-              <article><strong>SC.02</strong><span></span><i></i></article>
-              <article><strong>SC.03</strong><span></span><i></i></article>
-              <article><strong>SC.04</strong><span></span><i></i></article>
-            </div>
-            <div class="pencil-sketch"></div>
+            <svg class="storyboard-illustration" viewBox="0 0 980 270" role="img" aria-label="分镜线稿插画">
+              <g class="paper-lines">
+                <path d="M14 71 L820 0 L890 214 L77 262 Z" />
+                <path d="M27 88 L820 18 L874 205 L90 247 Z" />
+                <path d="M152 76 L174 235 M322 60 L344 222 M492 45 L516 210 M662 30 L690 198" />
+              </g>
+              <g class="frame-set">
+                <g transform="translate(63 95) rotate(-4)">
+                  <text x="0" y="-14">SC.01</text>
+                  <rect x="0" y="0" width="158" height="86" />
+                  <path d="M14 64 C38 40 60 54 82 31 C102 52 128 30 148 55" />
+                  <path d="M15 69 L150 69 M62 42 C73 33 82 33 90 44" />
+                  <line x1="18" y1="110" x2="144" y2="110" />
+                  <line x1="18" y1="126" x2="108" y2="126" />
+                </g>
+                <g transform="translate(250 78) rotate(-4)">
+                  <text x="0" y="-14">SC.02</text>
+                  <rect x="0" y="0" width="158" height="86" />
+                  <path d="M18 70 C38 42 63 47 82 35 C104 55 126 33 148 55" />
+                  <circle cx="76" cy="38" r="10" />
+                  <path d="M76 49 L76 75 M76 57 L56 70 M76 58 L96 72" />
+                  <line x1="18" y1="110" x2="144" y2="110" />
+                  <line x1="18" y1="126" x2="105" y2="126" />
+                </g>
+                <g transform="translate(439 61) rotate(-4)">
+                  <text x="0" y="-14">SC.03</text>
+                  <rect x="0" y="0" width="158" height="86" />
+                  <circle cx="78" cy="35" r="28" />
+                  <path d="M60 50 C72 63 92 59 105 42" />
+                  <path d="M92 27 C78 24 65 30 57 42" />
+                  <line x1="18" y1="110" x2="144" y2="110" />
+                  <line x1="18" y1="126" x2="110" y2="126" />
+                </g>
+                <g transform="translate(626 44) rotate(-4)">
+                  <text x="0" y="-14">SC.04</text>
+                  <rect x="0" y="0" width="170" height="86" />
+                  <path d="M16 74 L156 16 M28 75 L82 24 M92 72 L150 36" />
+                  <path d="M28 18 H154 M42 32 H144 M55 46 H132" />
+                  <line x1="18" y1="110" x2="150" y2="110" />
+                  <line x1="18" y1="126" x2="120" y2="126" />
+                </g>
+              </g>
+              <g class="pencil-lines" transform="translate(804 79) rotate(28)">
+                <path d="M42 0 L75 33 L75 222 L8 222 L8 33 Z" />
+                <path d="M42 0 L29 31 L56 31 Z" />
+                <path d="M20 46 V210 M42 36 V222 M63 46 V210" />
+              </g>
+              <path class="spark" d="M33 32 v24 M21 44 h24 M930 26 v20 M920 36 h20" />
+            </svg>
           </div>
         </div>
-        <form class="login-card" id="authForm">
-          <span class="card-corner left"></span>
-          <span class="card-corner right"></span>
-          <div>
-            <p class="eyebrow">Account</p>
-            <h3>登录 / 注册</h3>
-          </div>
-          <label><span>昵称</span><input id="authName" placeholder="注册时填写，可选" /></label>
-          <label><span>邮箱</span><input id="authEmail" type="email" placeholder="you@example.com" autocomplete="email" /></label>
-          <label><span>密码</span><input id="authPassword" type="password" placeholder="至少 6 位" autocomplete="current-password" /></label>
-          <p class="hint" id="authStatus">请先登录。登录后进入项目看板，再进入工作台。</p>
-          <div class="login-actions">
-            <button class="primary" id="loginBtn" type="button">登录</button>
-            <button class="ghost" id="registerBtn" type="button">注册新账号</button>
-          </div>
-        </form>
+        <div class="login-auth">
+          <form class="login-card" id="authForm">
+            <span class="card-corner left"></span>
+            <span class="card-corner right"></span>
+            <span class="card-spark"></span>
+            <div>
+              <p class="eyebrow">Account</p>
+              <h3>登录 / 注册</h3>
+            </div>
+            <label class="auth-name"><span>昵称 / 邮箱</span><input id="authName" placeholder="登录填用户名或邮箱，注册填昵称" autocomplete="username" /></label>
+            <label><span>邮箱</span><input id="authEmail" type="email" placeholder="you@example.com" autocomplete="email" /></label>
+            <label class="auth-password"><span>密码</span><input id="authPassword" type="password" placeholder="至少 6 位" autocomplete="current-password" /></label>
+            <p class="hint" id="authStatus">请先登录。登录后进入项目看板，再进入工作台。</p>
+            <div class="login-actions">
+              <button class="primary" id="loginBtn" type="button">登录</button>
+              <button class="ghost" id="registerBtn" type="button">注册新账号</button>
+            </div>
+          </form>
+          <p class="login-footer">© 2024 STORYBOARD LAB，保留所有权利。<br />专注分镜创作，让想象更清晰。</p>
+        </div>
       </section>
 
       <section class="platform-shell hidden" id="platformShell">
@@ -71,9 +119,9 @@
           <span class="hero-doodle one"></span>
           <span class="hero-doodle two"></span>
           <div>
-            <p class="eyebrow">Final MVP</p>
-            <h2>先确认分镜，再生成可讨论的分镜图</h2>
-            <p>最终版聚焦剧本分析可编辑、分镜确认、参考图上传和火柴人/线稿/写实版分镜图输出。</p>
+            <p class="eyebrow">Storyboard Workspace</p>
+            <h2>结构化分镜解析与可视化生成工作台</h2>
+            <p>面向脚本导入、镜头分析、分镜确认与参考图输出的一体化创作流程。</p>
           </div>
           <div class="hero-strip" aria-hidden="true">
             <span>SC.01</span>
@@ -169,13 +217,20 @@
                 <input id="fileInput" type="file" accept=".txt,.md,.csv,.doc,.docx,.pdf,.xls,.xlsx" />
                 <p id="fileStatus">静态演示版可读取 TXT/MD/CSV，Word/PDF/Excel 保留上传入口。</p>
               </div>
-              <label class="field">
-                <span>脚本文案</span>
-                <textarea id="scriptInput" placeholder="可以粘贴脚本，也可以手动输入。"></textarea>
-              </label>
+              <div class="script-input-grid">
+                <label class="field script-field">
+                  <span>脚本文案</span>
+                  <textarea id="scriptInput" placeholder="可以粘贴脚本，也可以手动输入。"></textarea>
+                </label>
+                <label class="field brief-field">
+                  <span>创作要求 / 想法 / 注意事项</span>
+                  <textarea id="globalNotes" placeholder="例如：希望更有生活感；人物关系要温柔；画面不要太商业棚拍；后续剧本分析、分镜拆解和分镜图都会参考这里。"></textarea>
+                </label>
+              </div>
               <div class="script-tools">
                 <label><span>分镜图类型</span><select id="boardStyle"><option>线稿</option><option>火柴人</option><option>写实版</option></select></label>
-                <label><span>创意强度</span><input id="creativity" type="range" min="0" max="3" value="2" /></label>
+                <label><span>镜头数量</span><input id="shotTarget" type="number" min="1" max="24" placeholder="留空由系统判断" /></label>
+                <label class="creativity-control"><span>创意强度</span><input id="creativity" type="range" min="0" max="3" step="1" value="2" /><small id="creativityText">当前：平衡发挥</small></label>
                 <button class="primary" id="analyze">下一步：剧本分析</button>
               </div>
             </section>
@@ -183,10 +238,12 @@
             <section class="panel" id="analysisPanel">
               <div class="section-head">
                 <div><p class="eyebrow">Script Analysis</p><h3>剧本分析</h3></div>
-                <button class="primary" id="split">确认分析并拆解分镜</button>
               </div>
               <p class="hint">人物、场景、道具、产品可能有多个；台词和旁白可决定是否带入分镜。</p>
               <div class="analysis-grid" id="analysisGrid"><div class="empty">导入脚本后点击剧本分析。</div></div>
+              <div class="panel-actions-bottom">
+                <button class="primary" id="split">确认分析并拆解分镜</button>
+              </div>
             </section>
 
             <section class="panel">
@@ -195,7 +252,6 @@
                 <div class="actions">
                   <button class="ghost" id="addShot">新增镜头</button>
                   <button class="ghost" id="confirmAll">全部确认</button>
-                  <button class="primary" id="generate">生成分镜图</button>
                 </div>
               </div>
               <div class="global-row">
@@ -205,6 +261,9 @@
               <datalist id="toneOptions"><option value="清爽蓝绿"></option><option value="暖色晨光"></option><option value="冷调科技"></option><option value="高级黑白"></option></datalist>
               <datalist id="visualStyleOptions"><option value="真实广告"></option><option value="生活方式"></option><option value="科技感"></option><option value="纪实感"></option></datalist>
               <div id="shots" class="shot-list"><div class="empty">确认剧本分析后，这里会出现分镜卡片。</div></div>
+              <div class="panel-actions-bottom">
+                <button class="primary" id="generate">生成分镜图</button>
+              </div>
             </section>
 
             <section class="panel">

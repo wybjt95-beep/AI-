@@ -4,10 +4,10 @@
   --muted: #6f6f6f;
   --line: #d9d9d4;
   --line-strong: #101010;
-  --paper: #fbfaf7;
-  --paper-deep: #f3f1eb;
-  --panel: rgba(255, 255, 252, 0.94);
-  --wash: #f7f5ef;
+  --paper: #ffffff;
+  --paper-deep: #f7f7f7;
+  --panel: rgba(255, 255, 255, 0.96);
+  --wash: #f8f8f8;
   --warn: #7b5d18;
   --warn-bg: #fff8dc;
   --ok: #20543f;
@@ -22,25 +22,12 @@ body {
   margin: 0;
   min-height: 100vh;
   color: var(--ink);
-  background:
-    linear-gradient(90deg, rgba(10,10,10,.025) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(10,10,10,.022) 1px, transparent 1px),
-    var(--paper);
-  background-size: 42px 42px, 42px 42px, auto;
+  background: #fff;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
 }
 
 body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background-image:
-    linear-gradient(rgba(0,0,0,.018) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0,0,0,.012) 1px, transparent 1px);
-  background-size: 7px 7px, 11px 11px;
-  opacity: .55;
-  mix-blend-mode: multiply;
+  display: none;
 }
 
 button, input, textarea, select { font: inherit; }
@@ -1304,6 +1291,372 @@ dialog::backdrop {
   transform: translateY(0);
 }
 
+/* Visual refresh matching the hand-drawn reference screens. */
+.app {
+  width: min(1580px, calc(100% - 64px));
+  padding: 28px 0 44px;
+}
+
+.login-page {
+  min-height: calc(100vh - 56px);
+  grid-template-columns: minmax(0, 1.2fr) minmax(420px, 540px);
+  gap: 68px;
+  align-items: center;
+}
+
+.login-copy {
+  min-height: 860px;
+  padding: 76px 0 270px 108px;
+  overflow: visible;
+}
+
+.login-copy .brand-mark {
+  width: 102px;
+  height: 102px;
+  margin-bottom: 24px;
+  border-radius: 20px;
+}
+
+.login-copy .eyebrow {
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: 5px;
+}
+
+.login-copy h2 {
+  max-width: 760px;
+  margin: 22px 0 18px;
+  font-size: 86px;
+  line-height: 1.08;
+  letter-spacing: 0;
+}
+
+.login-copy > p {
+  max-width: 620px;
+  color: #4d4d4d;
+  font-size: 26px;
+  line-height: 1.5;
+}
+
+.login-points {
+  width: min(620px, 100%);
+  margin-top: 42px;
+}
+
+.login-points span {
+  min-height: 132px;
+  border-color: #e5e5e5;
+}
+
+.login-storyboard {
+  left: -62px;
+  right: auto;
+  bottom: -12px;
+  width: min(1000px, 94vw);
+  height: 286px;
+  transform: rotate(-5deg);
+}
+
+.storyboard-illustration {
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+}
+
+.storyboard-illustration path,
+.storyboard-illustration rect,
+.storyboard-illustration circle,
+.storyboard-illustration line {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.storyboard-illustration text {
+  fill: var(--ink);
+  font-size: 16px;
+  font-weight: 850;
+  letter-spacing: 0;
+}
+
+.storyboard-illustration .spark {
+  stroke-width: 2.4;
+}
+
+.pencil-lines path:first-child {
+  fill: #fff;
+}
+
+.doodle-arrow {
+  right: 16%;
+  top: 31%;
+  width: 54px;
+  height: 54px;
+  border-top: 2px solid var(--ink);
+  border-right: 2px solid var(--ink);
+  transform: rotate(14deg) skew(-10deg);
+}
+
+.doodle-arrow::after {
+  content: "";
+  position: absolute;
+  right: -6px;
+  top: -8px;
+  width: 16px;
+  height: 16px;
+  border-top: 2px solid var(--ink);
+  border-right: 2px solid var(--ink);
+  transform: rotate(22deg);
+}
+
+.doodle-curve {
+  right: 10%;
+  top: 38%;
+  width: 52px;
+  height: 62px;
+  border-right: 2px solid var(--ink);
+  border-radius: 50%;
+  transform: rotate(-18deg);
+}
+
+.doodle-curve::before,
+.doodle-curve::after,
+.card-spark::before,
+.card-spark::after {
+  content: "";
+  position: absolute;
+  background: var(--ink);
+}
+
+.doodle-curve::before {
+  right: -7px;
+  top: 12px;
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  background: #fff;
+}
+
+.login-auth {
+  display: grid;
+  gap: 22px;
+}
+
+.login-card {
+  align-self: auto;
+  padding: 52px;
+  gap: 22px;
+  border-color: #dedede;
+  border-radius: 26px;
+  background: #fff;
+  box-shadow: 0 28px 88px rgba(0,0,0,.08);
+  backdrop-filter: none;
+}
+
+.login-card::before {
+  inset: 116px 50px auto;
+  border-top-color: rgba(0,0,0,.14);
+  transform: none;
+}
+
+.login-card h3 {
+  margin: 14px 0 16px;
+  font-size: 36px;
+  line-height: 1.1;
+}
+
+.login-card label {
+  gap: 10px;
+}
+
+.login-card input {
+  min-height: 58px;
+  padding-left: 20px;
+  border-color: #d9d9d9;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.login-actions {
+  margin-top: 12px;
+}
+
+.login-actions .primary,
+.login-actions .ghost {
+  min-height: 58px;
+  border-radius: 8px;
+}
+
+.login-footer {
+  margin: 8px 0 0 28px;
+  color: #777;
+  line-height: 1.7;
+}
+
+.card-spark {
+  position: absolute;
+  right: 34px;
+  top: 34px;
+  width: 28px;
+  height: 28px;
+}
+
+.card-spark::before {
+  left: 13px;
+  top: 0;
+  width: 2px;
+  height: 28px;
+}
+
+.card-spark::after {
+  left: 0;
+  top: 13px;
+  width: 28px;
+  height: 2px;
+}
+
+.platform-shell {
+  padding-top: 0;
+}
+
+.topbar,
+.hero,
+.panel,
+.status,
+.stage span {
+  border-color: var(--line-strong);
+  background: #fff;
+  box-shadow: none;
+}
+
+.topbar {
+  position: static;
+  padding: 20px 16px 28px;
+  border: 0;
+  border-radius: 0;
+}
+
+.top-actions .ghost {
+  min-height: 48px;
+  border-width: 1.5px;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.hero {
+  min-height: 300px;
+  border-width: 1.5px;
+  border-radius: 20px;
+  padding: 70px 82px;
+}
+
+.hero h2 {
+  font-size: 56px;
+  line-height: 1.16;
+}
+
+.hero p:last-child {
+  color: #444;
+  font-size: 18px;
+}
+
+.hero-strip {
+  min-height: 152px;
+  border-width: 1.5px;
+  box-shadow: none;
+}
+
+.stage {
+  margin: 20px 0 22px;
+  gap: 24px;
+}
+
+.stage span {
+  min-height: 54px;
+  border-width: 1.5px;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.panel,
+.status {
+  border-width: 1.5px;
+  border-radius: 18px;
+}
+
+.section-head {
+  align-items: flex-start;
+}
+
+.section-head h3 {
+  font-size: 34px;
+}
+
+.script-input-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(280px, .8fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.script-field textarea,
+.brief-field textarea {
+  min-height: 180px;
+  border-color: var(--line-strong);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.brief-field textarea {
+  min-height: 180px;
+}
+
+.script-tools {
+  grid-template-columns: 170px 160px minmax(260px, 1fr) 210px;
+  gap: 14px;
+}
+
+.creativity-control {
+  position: relative;
+}
+
+.creativity-control input[type="range"] {
+  padding: 0;
+  height: 36px;
+  accent-color: var(--ink);
+}
+
+.creativity-control small {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.panel-actions-bottom {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+
+.panel-actions-bottom .primary {
+  min-width: 220px;
+}
+
+.shot-side {
+  gap: 8px;
+}
+
+.shot-side .mini {
+  min-height: 34px;
+}
+
+.frame svg {
+  filter: none;
+}
+
 @media (max-width: 1180px) {
   .login-page {
     grid-template-columns: 1fr;
@@ -1318,6 +1671,7 @@ dialog::backdrop {
   .kanban,
   .project-grid,
   .workbench,
+  .script-input-grid,
   .script-tools {
     grid-template-columns: 1fr;
   }

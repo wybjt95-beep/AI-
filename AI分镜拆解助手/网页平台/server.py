@@ -248,16 +248,28 @@ def save_store(_store=None):
     return None
 
 
-def find_user(_store=None, user_id=None, email=None):
+def find_user(_store=None, user_id=None, email=None, name=None):
     normalized_email = str(email or "").strip().lower()
-    if not user_id and not normalized_email:
+    normalized_name = str(name or "").strip()
+    if not user_id and not normalized_email and not normalized_name:
         return None
     with db_connection() as conn:
         if user_id:
             row = conn.execute("SELECT * FROM users WHERE id = ?", (str(user_id),)).fetchone()
-        else:
+        elif normalized_email:
             row = conn.execute("SELECT * FROM users WHERE email = ?", (normalized_email,)).fetchone()
+        else:
+            row = conn.execute("SELECT * FROM users WHERE lower(name) = lower(?) ORDER BY created_at DESC LIMIT 1", (normalized_name,)).fetchone()
     return row_to_user(row)
+
+
+def find_user_by_identifier(identifier):
+    value = str(identifier or "").strip()
+    if not value:
+        return None
+    if "@" in value:
+        return find_user(email=value)
+    return find_user(name=value)
 
 
 def public_user(user):
@@ -401,6 +413,8 @@ def register_user(payload):
         raise ValueError("密码至少 6 位")
     if find_user(email=email):
         raise ValueError("该邮箱已注册")
+    if name and find_user(name=name):
+        raise ValueError("该用户名已被使用")
     salt, digest = hash_password(password)
     user = {
         "id": f"user-{secrets.token_hex(8)}",
@@ -428,16 +442,15 @@ def register_user(payload):
                 user["createdAt"],
             ),
         )
-    sid = create_session(None, user)
-    return None, sid, user
+    return None, "", user
 
 
 def login_user(payload):
-    email = str(payload.get("email") or "").strip().lower()
+    identifier = str(payload.get("identifier") or payload.get("email") or payload.get("name") or "").strip()
     password = str(payload.get("password") or "")
-    user = find_user(email=email)
+    user = find_user_by_identifier(identifier)
     if not user or not verify_password(password, user.get("salt", ""), user.get("passwordHash", "")):
-        raise ValueError("邮箱或密码不正确")
+        raise ValueError("用户名/邮箱或密码不正确")
     sid = create_session(None, user)
     return None, sid, user
 
@@ -499,7 +512,7 @@ def save_user_project(store, user, payload):
         ).fetchall()
         stale_ids = [row["id"] for row in stale_rows]
         if stale_ids:
-            conn.executemany("DELETE FROM projects WHERE user_id = ? AND id = ?", [(user["id"], project_id) for project_id in stale_ids])
+            conn.executemany("DELETE FROM projects WHERE user_id = ? AND id = ?", [(user["id"], stale_id) for stale_id in stale_ids])
     return payload
 
 
@@ -644,6 +657,17 @@ def int_duration(project):
         return 30
 
 
+def requested_shot_count(payload):
+    raw = str(payload.get("shotCount") or "").strip()
+    if not raw:
+        return None
+    try:
+        value = int(float(raw))
+    except ValueError:
+        return None
+    return min(24, max(1, value))
+
+
 def storyboard_bank():
     return [
         ["地点建立", "办公楼前建立镜头，年轻上班族推着新能源电动车进入画面，先交代地点、人物和产品关系。", "远景", "固定轻推", "道路线、环境", "地点、人物、产品关系"],
@@ -679,6 +703,20 @@ def script_units(script, max_units=8):
         else:
             merged.append(unit)
     return merged[:max_units]
+
+
+def creativity_label(value):
+    try:
+        level = int(float(value))
+    except (TypeError, ValueError):
+        level = 2
+    if level <= 0:
+        return "保守：镜头拆解贴近原脚本，少做额外创意延展。"
+    if level == 1:
+        return "稳妥：允许轻微优化镜头顺序和画面表达。"
+    if level == 2:
+        return "平衡：在不偏离脚本的前提下提供可讨论的构图和动作创意。"
+    return "脑洞：允许更有个性的镜头角度、转场和视觉表达，但必须服务脚本目的。"
 
 
 def pick_from_text(options, text, fallback, offset=0):
@@ -747,12 +785,20 @@ def mock_analyze(payload, source="mock"):
         "年轻上班族",
         "主人公",
         "主角",
+        "女主",
+        "男主",
+        "母亲",
+        "父亲",
         "用户",
         "顾客",
         "年轻女性",
         "年轻男性",
         "女性用户",
         "男性用户",
+        "女生",
+        "男生",
+        "女士",
+        "男士",
         "学生",
         "妈妈",
         "孩子",
@@ -766,8 +812,8 @@ def mock_analyze(payload, source="mock"):
         "讲述者",
     ]
     product_candidates = ["新能源电动车", "健康饮食APP", "电动车", "车辆", "汽车", "手机", "APP", "小程序", "咖啡", "饮料", "护肤品", "课程", "产品", "服务"]
-    location_candidates = ["办公楼前", "城市街道", "通勤路口", "城市道路", "路口", "办公室", "会议室", "家中", "客厅", "厨房", "门店", "商场", "校园", "公园", "地铁站", "室内", "户外"]
-    prop_candidates = ["智能仪表", "车把", "启动键", "车轮", "头盔", "背包", "电量", "速度", "品牌口号", "手机", "电脑", "杯子", "海报", "包装", "屏幕", "早餐", "食物", "界面"]
+    location_candidates = ["办公楼前", "城市街道", "通勤路口", "城市道路", "路口", "办公室", "会议室", "书房", "河边公园", "河边", "家中", "客厅", "厨房", "门店", "商场", "校园", "公园", "地铁站", "室内", "户外"]
+    prop_candidates = ["智能仪表", "车把", "启动键", "车轮", "头盔", "背包", "电量", "速度", "品牌口号", "手机", "电脑", "笔记本电脑", "水杯", "杯子", "书桌", "书本", "海报", "包装", "屏幕", "早餐", "食物", "界面"]
     time_candidates = ["清晨", "上午", "中午", "下午", "傍晚", "夜晚", "白天", "深夜"]
     selling_candidates = ["轻便", "安全", "智能", "平稳", "安静", "清晰", "高效", "便捷", "舒适", "可靠", "省时", "专业", "年轻", "高级"]
 
@@ -793,7 +839,8 @@ def mock_split(payload, source="mock"):
     analysis = payload.get("analysis") or {}
     script = str(payload.get("script") or "")
     duration = int_duration(project)
-    units = script_units(script)
+    target_count = requested_shot_count(payload)
+    units = script_units(script, target_count or 8)
     if not units:
         units = [
             f"在{(analysis.get('locations') or ['主要场景'])[0]}建立人物和空间关系",
@@ -801,7 +848,7 @@ def mock_split(payload, source="mock"):
             "捕捉人物反应和情绪变化",
             "用留白或稳定构图完成收束",
         ]
-    total = min(8, max(4, len(units))) if duration >= 15 else min(6, max(3, len(units)))
+    total = target_count or (min(8, max(4, len(units))) if duration >= 15 else min(6, max(3, len(units))))
     while len(units) < total:
         units.append(units[-1])
     units = units[:total]
@@ -869,6 +916,9 @@ def build_prompt(payload):
         "visualStyle": payload.get("visualStyle") or "",
         "boardStyle": payload.get("boardStyle") or "",
         "creativity": payload.get("creativity") or "",
+        "creativityInstruction": creativity_label(payload.get("creativity")),
+        "shotCount": payload.get("shotCount") or "由系统根据脚本和片长自由判断",
+        "globalNotes": payload.get("globalNotes") or "",
         "includeDialogue": bool(payload.get("includeDialogue")),
         "includeNarration": bool(payload.get("includeNarration")),
     }
@@ -882,9 +932,16 @@ def build_prompt(payload):
 def build_analysis_prompt(payload):
     template = ANALYSIS_PROMPT_PATH.read_text(encoding="utf-8")
     project = payload.get("project") or {}
+    project_context = {
+        **project,
+        "globalNotes": payload.get("globalNotes") or "",
+        "shotCount": payload.get("shotCount") or "未指定",
+        "creativity": payload.get("creativity") or "",
+        "creativityInstruction": creativity_label(payload.get("creativity")),
+    }
     script = str(payload.get("script") or "").strip()
     return (
-        template.replace("{{PROJECT_JSON}}", json.dumps(project, ensure_ascii=False, indent=2))
+        template.replace("{{PROJECT_JSON}}", json.dumps(project_context, ensure_ascii=False, indent=2))
         .replace("{{SCRIPT_TEXT}}", script)
     )
 
@@ -1088,6 +1145,7 @@ def image_prompt_for_shot(shot, payload, index):
     tone = str(payload.get("tone") or "")
     visual_style = str(payload.get("visualStyle") or "")
     project = payload.get("project") or {}
+    global_notes = str(payload.get("globalNotes") or "").strip()
     ref_meta = shot.get("refMeta") if isinstance(shot.get("refMeta"), dict) else {}
     if board_style == "线稿":
         style_line = "黑白分镜线稿，清晰线条，少量灰度阴影，广告分镜草图，主体和空间关系必须明确，不要彩色写实渲染。"
@@ -1126,6 +1184,7 @@ def image_prompt_for_shot(shot, payload, index):
         "画面重点": shot.get("focus") or "",
         "项目风格": project.get("style") or visual_style,
         "整体色调": tone,
+        "全局创作要求": global_notes,
     }
     field_text = "\n".join(f"{key}：{value}" for key, value in fields.items() if value)
     return (
@@ -1339,8 +1398,12 @@ class StoryboardHandler(SimpleHTTPRequestHandler):
         path = parsed.path
         if path == "/api/auth/register":
             try:
-                _, sid, user = register_user(read_json_body(self))
-                return json_response(self, 200, {"user": public_user(user), "config": config_status(user)}, {"Set-Cookie": session_cookie_header(sid)})
+                _, _, user = register_user(read_json_body(self))
+                return json_response(
+                    self,
+                    200,
+                    {"user": public_user(user), "config": config_status(None), "message": "注册成功，请使用用户名或邮箱登录。"},
+                )
             except (ValueError, json.JSONDecodeError) as exc:
                 return json_response(self, 400, {"error": str(exc)})
         if path == "/api/auth/login":
