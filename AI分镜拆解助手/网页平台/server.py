@@ -955,6 +955,13 @@ def chat_completion_urls(api_base):
     return [f"{base}/v1/chat/completions", f"{base}/chat/completions"]
 
 
+def image_generation_urls(api_base):
+    base = api_base.rstrip("/")
+    if base.endswith("/v1"):
+        return [f"{base}/images/generations"]
+    return [f"{base}/v1/images/generations", f"{base}/images/generations"]
+
+
 def request_chat_completion(url, api_key, request_body):
     data = json.dumps(request_body, ensure_ascii=False).encode("utf-8")
     request = urllib.request.Request(
@@ -976,6 +983,27 @@ def request_chat_completion(url, api_key, request_body):
         raise ApiRequestError(exc.code, body, str(exc.reason)) from exc
 
 
+def request_image_generation(url, api_key, request_body):
+    data = json.dumps(request_body, ensure_ascii=False).encode("utf-8")
+    request = urllib.request.Request(
+        url,
+        data=data,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120 Safari/537.36",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=180) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        raise ApiRequestError(exc.code, body, str(exc.reason)) from exc
+
+
 def post_chat_completion(api_base, api_key, request_body):
     last_error = None
     for url in chat_completion_urls(api_base):
@@ -990,6 +1018,22 @@ def post_chat_completion(api_base, api_key, request_body):
     if last_error:
         raise last_error
     raise ValueError("没有可用的 Chat Completions 地址")
+
+
+def post_image_generation(api_base, api_key, request_body):
+    last_error = None
+    for url in image_generation_urls(api_base):
+        try:
+            return request_image_generation(url, api_key, request_body)
+        except ApiRequestError as exc:
+            last_error = exc
+            if exc.code not in {404, 405} and "1010" not in exc.body:
+                raise
+        except urllib.error.URLError as exc:
+            last_error = exc
+    if last_error:
+        raise last_error
+    raise ValueError("没有可用的 Images Generations 地址")
 
 
 def http_error_message(exc):
@@ -1037,6 +1081,129 @@ def call_text_model_json(prompt, system_prompt, api_config):
             raise ValueError(http_error_message(retry_exc)) from retry_exc
     content = response_body["choices"][0]["message"]["content"]
     return extract_json(content), model
+
+
+def image_prompt_for_shot(shot, payload, index):
+    board_style = str(payload.get("boardStyle") or "写实版")
+    tone = str(payload.get("tone") or "")
+    visual_style = str(payload.get("visualStyle") or "")
+    project = payload.get("project") or {}
+    ref_meta = shot.get("refMeta") if isinstance(shot.get("refMeta"), dict) else {}
+    if board_style == "线稿":
+        style_line = "黑白分镜线稿，清晰线条，少量灰度阴影，广告分镜草图，主体和空间关系必须明确，不要彩色写实渲染。"
+    elif board_style == "火柴人":
+        style_line = "极简火柴人分镜草图，构图清晰，动作关系明确。"
+    else:
+        style_line = "写实广告分镜参考图，realistic cinematic storyboard frame，真实人物比例，自然光影，真实空间透视，电影感构图，不要卡通，不要火柴人，不要线稿，不要矢量图，不要抽象图标。"
+    ref_line = ""
+    if ref_meta:
+        subject_x = ref_meta.get("subjectX", 0.5)
+        subject_y = ref_meta.get("subjectY", 0.52)
+        aspect = ref_meta.get("aspect", "")
+        brightness = float(ref_meta.get("brightness", 0.62) or 0.62)
+        warmth = float(ref_meta.get("warmth", 0.5) or 0.5)
+        balance = ref_meta.get("balance", "center")
+        horizontal = "画面左侧" if subject_x < 0.4 else "画面右侧" if subject_x > 0.6 else "画面中部"
+        vertical = "偏上留白" if subject_y < 0.42 else "偏下主体" if subject_y > 0.62 else "中部主体"
+        light_hint = "偏明亮" if brightness >= 0.58 else "偏低调"
+        warm_hint = "偏暖" if warmth >= 0.56 else "偏冷" if warmth <= 0.44 else "中性色温"
+        balance_hint = {"left": "左侧视觉重量更强", "right": "右侧视觉重量更强"}.get(balance, "左右视觉重量均衡")
+        ref_line = (
+            f"参考用户上传图片的构图关系：主体大致位于{horizontal}，{vertical}，画面比例约为{aspect or '常规横图'}，"
+            f"{balance_hint}，整体{light_hint}、{warm_hint}。只借鉴构图、主体位置、画面层次和光线倾向；必须重新绘制，"
+            "不要复刻原图具体人物、脸、服装、背景、品牌和可识别细节。"
+        )
+    fields = {
+        "镜号": shot.get("no") or str(index + 1).zfill(2),
+        "画面内容": shot.get("content") or "",
+        "景别": shot.get("shotSize") or "",
+        "运镜": shot.get("camera") or "",
+        "人物": shot.get("people") or "",
+        "场景": shot.get("location") or "",
+        "道具": shot.get("props") or "",
+        "产品": shot.get("product") or "",
+        "时间段": shot.get("time") or "",
+        "画面重点": shot.get("focus") or "",
+        "项目风格": project.get("style") or visual_style,
+        "整体色调": tone,
+    }
+    field_text = "\n".join(f"{key}：{value}" for key, value in fields.items() if value)
+    return (
+        f"{style_line}\n"
+        f"{ref_line}\n"
+        "请生成一张可用于广告/短视频前期沟通的分镜参考图，16:9 横图构图。\n"
+        "必须直接表现当前镜头内容，不要生成文字说明页、不要 UI 截图、不要多宫格、不要水印、不要乱码文字。\n"
+        "画面必须具体可读，不能只用符号、几何形状或抽象示意代替真实场景。\n"
+        "如果出现人物，保持自然真实姿态；如果有道具，要能看出道具和人物关系。\n"
+        f"{field_text}"
+    ).strip()
+
+
+def image_from_generation_response(response_body):
+    data = response_body.get("data") if isinstance(response_body, dict) else None
+    if isinstance(data, list) and data:
+        item = data[0] or {}
+        if item.get("b64_json"):
+            return f"data:image/png;base64,{item['b64_json']}"
+        if item.get("url"):
+            return item["url"]
+        if item.get("image"):
+            image = str(item["image"])
+            return image if image.startswith("data:image") else f"data:image/png;base64,{image}"
+    for key in ("b64_json", "image", "url"):
+        value = response_body.get(key) if isinstance(response_body, dict) else None
+        if value:
+            value = str(value)
+            if key == "url" or value.startswith("data:image"):
+                return value
+            return f"data:image/png;base64,{value}"
+    raise ValueError("图片模型没有返回可用图片")
+
+
+def generate_storyboard_images(payload, user=None):
+    api_config = user_api_config(user) if user else {"provider": "mock"}
+    provider = (api_config.get("provider") or "mock").lower()
+    api_base = (api_config.get("apiBaseUrl") or "").rstrip("/")
+    api_key = api_config.get("apiKey") or ""
+    image_model = api_config.get("imageModel") or ""
+    if provider in {"mock", "local", "demo"} or not api_base or not api_key or not image_model:
+        raise ValueError("未配置真实图片模型")
+
+    shots = payload.get("shots") or []
+    if not isinstance(shots, list) or not shots:
+        raise ValueError("缺少要生成图片的分镜")
+
+    results = []
+    for index, shot in enumerate(shots[:8]):
+        if not isinstance(shot, dict):
+            continue
+        prompt = image_prompt_for_shot(shot, payload, index)
+        request_body = {
+            "model": image_model,
+            "prompt": prompt,
+            "n": 1,
+            "size": "1024x1024",
+            "response_format": "b64_json",
+        }
+        try:
+            response_body = post_image_generation(api_base, api_key, request_body)
+        except (urllib.error.HTTPError, ApiRequestError) as exc:
+            if getattr(exc, "code", None) not in {400, 422}:
+                raise ValueError(http_error_message(exc)) from exc
+            request_body.pop("response_format", None)
+            try:
+                response_body = post_image_generation(api_base, api_key, request_body)
+            except (urllib.error.HTTPError, ApiRequestError) as retry_exc:
+                raise ValueError(http_error_message(retry_exc)) from retry_exc
+        results.append({
+            "no": str(shot.get("no") or index + 1).zfill(2),
+            "image": image_from_generation_response(response_body),
+            "model": image_model,
+            "source": "ai-image",
+        })
+    if not results:
+        raise ValueError("没有生成任何分镜图")
+    return {"source": "ai-image", "model": image_model, "images": results}
 
 
 def normalize_analysis(raw_analysis):
@@ -1133,7 +1300,7 @@ class StoryboardHandler(SimpleHTTPRequestHandler):
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
-        self.send_header("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'self'; form-action 'self'")
+        self.send_header("Content-Security-Policy", "default-src 'self'; img-src 'self' data: https:; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'self'; form-action 'self'")
         super().end_headers()
 
     def do_GET(self):
@@ -1220,6 +1387,17 @@ class StoryboardHandler(SimpleHTTPRequestHandler):
                 return json_response(self, 400, {"error": str(exc)})
             except Exception as exc:
                 return json_response(self, 500, {"error": f"剧本分析失败：{exc}"})
+        if path == "/api/storyboard/images":
+            try:
+                user, _ = require_user(self)
+                payload = read_json_body(self)
+                return json_response(self, 200, generate_storyboard_images(payload, user))
+            except PermissionError as exc:
+                return json_response(self, 401, {"error": str(exc)})
+            except (ValueError, json.JSONDecodeError) as exc:
+                return json_response(self, 400, {"error": str(exc)})
+            except Exception as exc:
+                return json_response(self, 500, {"error": f"分镜图生成失败：{exc}"})
         if path != "/api/storyboard/split":
             return json_response(self, 404, {"error": "接口不存在"})
         try:

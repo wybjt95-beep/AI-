@@ -1018,17 +1018,136 @@ function renderBoards() {
     renderSummary();
     return;
   }
-  els.boards.innerHTML = confirmed.map((shot, i) => `
+  const useLocalSketch = els.boardStyle.value === "火柴人";
+  els.boards.innerHTML = confirmed.map((shot, i) => {
+    const hasAiImage = Boolean(shot.boardImage && !useLocalSketch);
+    const isFallback = !hasAiImage && !useLocalSketch;
+    const warning = shot.boardWarning || (isFallback ? "没有拿到真实图片，当前展示的是本地草图。请检查分镜图模型配置后重新生成。" : "");
+    const sourceTag = hasAiImage ? "真实生图" : useLocalSketch ? "火柴人草图" : "本地草图";
+    return `
     <article class="board-card">
-      <div class="frame">${boardSvg(shot, i)}</div>
+      <div class="frame ${isFallback ? "frame-fallback" : ""}">
+        ${hasAiImage ? `<img class="frame-image" src="${esc(shot.boardImage)}" alt="${esc(shot.no)} ${esc(shot.type)}" />` : boardSvg(shot, i)}
+        ${isFallback ? `<div class="frame-status">真实图片未生成，当前为本地草图</div>` : ""}
+      </div>
       <div class="board-info">
         <h4>${esc(shot.no)} ${esc(shot.type)}</h4>
         <p>${esc(shot.content)}</p>
         ${shot.refData ? `<div class="board-refbox"><img class="board-ref" src="${shot.refData}" alt="${esc(shot.refName)}" /><span>参考图：${esc(shot.refName)}</span></div>` : ""}
-        <div class="board-tags"><span class="tag">${esc(shot.shotSize)}</span><span class="tag">${esc(shot.camera)}</span><span class="tag">${esc(els.boardStyle.value)}</span><span class="tag">${shot.refData ? "含参考图" : "未上传参考图"}</span></div>
+        ${warning ? `<p class="board-warning">${esc(warning)}</p>` : ""}
+        <div class="board-tags"><span class="tag">${esc(shot.shotSize)}</span><span class="tag">${esc(shot.camera)}</span><span class="tag">${esc(els.boardStyle.value)}</span><span class="tag">${sourceTag}</span>${hasAiImage && shot.boardModel ? `<span class="tag">${esc(shot.boardModel)}</span>` : ""}<span class="tag">${shot.refData ? "含参考图" : "未上传参考图"}</span></div>
       </div>
-    </article>`).join("");
+    </article>`;
+  }).join("");
   renderSummary();
+}
+
+function imagePayload(confirmed) {
+  return {
+    project: state.project,
+    boardStyle: els.boardStyle.value,
+    tone: els.tone.value,
+    visualStyle: els.visualStyle.value,
+    shots: confirmed.map((shot) => ({
+      no: shot.no,
+      type: shot.type,
+      content: shot.content,
+      shotSize: shot.shotSize,
+      camera: shot.camera,
+      duration: shot.duration,
+      people: shot.people,
+      location: shot.location,
+      props: shot.props,
+      product: shot.product,
+      time: shot.time,
+      dialogue: shot.dialogue,
+      narration: shot.narration,
+      focus: shot.focus,
+      refMeta: shot.refMeta || null,
+    })),
+  };
+}
+
+async function requestStoryboardImages(confirmed) {
+  const response = await fetch("/api/storyboard/images", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(imagePayload(confirmed)),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || "图片生成接口请求失败。");
+  return data;
+}
+
+async function generateBoards() {
+  const confirmed = state.shots.filter((shot) => shot.status === "已确认");
+  if (!confirmed.length) return showToast("请先确认至少一个镜头。");
+  await hydrateMissingReferenceMeta();
+  confirmed.forEach((shot) => {
+    shot.boardWarning = "";
+    if (els.boardStyle.value === "火柴人") shot.boardImage = "";
+  });
+  const button = $("#generate");
+  const text = button.textContent;
+  button.disabled = true;
+  button.textContent = els.boardStyle.value === "火柴人" ? "生成中..." : "调用生图中...";
+  try {
+    if (els.boardStyle.value !== "火柴人") {
+      const result = await requestStoryboardImages(confirmed);
+      (result.images || []).forEach((item) => {
+        const shot = confirmed.find((candidate) => candidate.no === item.no);
+        if (!shot) return;
+        shot.boardImage = item.image || "";
+        shot.boardSource = item.source || result.source || "ai-image";
+        shot.boardModel = item.model || result.model || "";
+      });
+      const generatedCount = confirmed.filter((shot) => shot.boardImage).length;
+      if (!generatedCount) throw new Error("图片模型没有返回可用图片。");
+      confirmed.forEach((shot) => {
+        if (!shot.boardImage) shot.boardWarning = "图片模型没有返回这一镜头的图片，已显示本地草图。";
+      });
+      showToast(generatedCount === confirmed.length ? `已生成 ${generatedCount} 张真实分镜图。` : `已生成 ${generatedCount} 张，未返回的镜头显示本地草图。`);
+    } else {
+      showToast("火柴人草图已生成。");
+    }
+  } catch (error) {
+    console.warn(error);
+    confirmed.forEach((shot) => {
+      shot.boardImage = "";
+      shot.boardWarning = `真实生图失败，已回退本地草图：${error.message || "未知错误"}`;
+    });
+    showToast("真实生图失败，已回退本地草图。");
+  } finally {
+    state.boardsGenerated = true;
+    renderBoards();
+    saveCurrentProject();
+    button.disabled = false;
+    button.textContent = text;
+  }
+}
+
+function changeBoardStyle(style) {
+  const next = style || els.boardStyle.value;
+  const changed = els.boardStyle.value !== next;
+  if (!changed) {
+    renderBoards();
+    saveCurrentProject();
+    showToast(next === "火柴人" ? "当前已是火柴人草图。" : `当前已是${next}，点击“生成分镜图”重新生成。`);
+    return;
+  }
+  els.boardStyle.value = next;
+  state.shots.forEach((shot) => {
+    shot.boardImage = "";
+    shot.boardWarning = "";
+    shot.boardSource = "";
+    shot.boardModel = "";
+  });
+  state.boardsGenerated = next === "火柴人" && state.shots.some((shot) => shot.status === "已确认");
+  renderBoards();
+  saveCurrentProject();
+  if (changed) {
+    showToast(next === "火柴人" ? "已切换为火柴人草图。" : `已切换为${next}，请重新点击生成分镜图。`);
+  }
 }
 
 function syncAnalysisFromInputs() {
@@ -1215,11 +1334,8 @@ function bindEvents() {
   $("#split").addEventListener("click", splitStoryboard);
   $("#addShot").addEventListener("click", addShot);
   $("#confirmAll").addEventListener("click", () => { state.shots.forEach((s) => s.status = "已确认"); state.boardsGenerated = false; renderShots(); renderBoards(); saveCurrentProject(); });
-  $("#generate").addEventListener("click", async () => {
-    if (!state.shots.some((s) => s.status === "已确认")) return showToast("请先确认至少一个镜头。");
-    await hydrateMissingReferenceMeta();
-    state.boardsGenerated = true; renderBoards(); saveCurrentProject(); showToast("分镜图已生成。");
-  });
+  $("#generate").addEventListener("click", generateBoards);
+  els.boardStyle.addEventListener("change", () => changeBoardStyle(els.boardStyle.value));
   $("#clearScript").addEventListener("click", () => { els.scriptInput.value = ""; state.shots = []; state.boardsGenerated = false; renderShots(); renderBoards(); saveCurrentProject(); });
   $("#uploadTab").addEventListener("click", () => { $("#uploadTab").classList.add("active"); $("#directTab").classList.remove("active"); els.uploadBox.classList.remove("hidden"); });
   $("#directTab").addEventListener("click", () => { $("#directTab").classList.add("active"); $("#uploadTab").classList.remove("active"); els.uploadBox.classList.add("hidden"); });
@@ -1290,7 +1406,7 @@ function bindEvents() {
     state.boardsGenerated = false;
     renderShots(); renderBoards(); saveCurrentProject(); showToast("参考图已上传，已提取构图参考。");
   });
-  document.querySelectorAll("[data-style]").forEach((btn) => btn.addEventListener("click", () => { els.boardStyle.value = btn.dataset.style; renderBoards(); saveCurrentProject(); }));
+  document.querySelectorAll("[data-style]").forEach((btn) => btn.addEventListener("click", () => changeBoardStyle(btn.dataset.style)));
   ["projectName", "projectType", "duration", "aspect", "style", "platform"].forEach((id) => $(`#${id}`).addEventListener("input", () => { syncProjectFromForm(); scheduleAutoSave(); }));
   [els.boardStyle, els.tone, els.visualStyle].forEach((node) => node.addEventListener("input", scheduleAutoSave));
 }
