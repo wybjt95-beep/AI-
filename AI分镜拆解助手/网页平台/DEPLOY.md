@@ -70,6 +70,36 @@ http://127.0.0.1:5176/
 - Render 持久化磁盘：挂载到 `/data`，并保持 `APP_DATA_DIR=/data`。
 - 托管数据库：迁移 SQLite 到 PostgreSQL 或 MySQL。
 
+## Railway 部署参考
+
+没有信用卡时，可以优先用 Railway 做作品集 Demo。
+
+1. 进入 Railway Dashboard，选择 New Project。
+2. 选择 Deploy from GitHub repo。
+3. 选择仓库 `wybjt95-beep/AI-`。
+4. 进入服务 Settings，把 Root Directory 设置为：
+
+```text
+/AI分镜拆解助手/网页平台
+```
+
+5. Railway 会读取该目录下的 `Dockerfile` 和 `railway.json`。
+6. 在 Variables 中新增：
+
+```bash
+APP_ENV=production
+APP_SECRET=请使用强随机字符串
+APP_DATA_DIR=/data
+COOKIE_SECURE=true
+SESSION_MAX_AGE_SECONDS=1209600
+```
+
+不要手动设置 `PORT`。Railway 会自动提供 `PORT`，应用会监听 `0.0.0.0:$PORT`。
+
+7. 部署完成后，在 Networking 中生成 Public Domain。
+
+免费体验版未配置持久化 Volume，用户账号、项目数据和 API 配置可能会在服务重启或重新部署后丢失。
+
 ## 上线前检查
 
 - `.env` 不要提交。
