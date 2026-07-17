@@ -652,7 +652,19 @@ def as_text(value, fallback="待补充"):
 def as_list(value):
     if isinstance(value, list):
         return unique(value)
-    return unique(re.split(r"[\n,，、;；]", str(value or "")))
+    return unique(re.split(r"[\n,，、;；+＋]", str(value or "")))
+
+
+def tag_list(value, limit=3):
+    if isinstance(value, list):
+        items = value
+    else:
+        items = re.split(r"[\n,，、;；+＋]", str(value or ""))
+    return unique(items)[:limit]
+
+
+def tag_text(value, limit=3):
+    return "、".join(tag_list(value, limit))
 
 
 def pick(mapping, *keys, default=None):
@@ -915,6 +927,8 @@ def mock_split(payload, source="mock"):
     return {
         "source": source,
         "shots": shots,
+        "overallVisualStyle": tag_text(payload.get("visualStyle") or project.get("style") or "真实电影摄影风格、高端TVC广告风格、都市生活方式风格", 3),
+        "overallTone": tag_text(payload.get("tone") or "自然暖白日光色调、中低对比度、自然肤色与暖色灯光点缀", 3),
         "warning": "当前未配置真实模型，已使用后端本地演示拆分镜。",
     }
 
@@ -926,8 +940,11 @@ def build_prompt(payload):
     script = str(payload.get("script") or "").strip()
     project_context = {
         **project,
-        "tone": payload.get("tone") or "",
-        "visualStyle": payload.get("visualStyle") or "",
+        "projectStyleTags": tag_list(project.get("style"), 6),
+        "tone": tag_text(payload.get("tone"), 3),
+        "visualStyle": tag_text(payload.get("visualStyle"), 3),
+        "toneTags": tag_list(payload.get("tone"), 3),
+        "visualStyleTags": tag_list(payload.get("visualStyle"), 3),
         "boardStyle": payload.get("boardStyle") or "",
         "creativity": payload.get("creativity") or "",
         "creativityInstruction": creativity_label(payload.get("creativity")),
@@ -948,6 +965,7 @@ def build_analysis_prompt(payload):
     project = payload.get("project") or {}
     project_context = {
         **project,
+        "projectStyleTags": tag_list(project.get("style"), 6),
         "globalNotes": payload.get("globalNotes") or "",
         "shotCount": payload.get("shotCount") or "未指定",
         "creativity": payload.get("creativity") or "",
@@ -989,6 +1007,25 @@ def shots_from_parsed(parsed):
     if isinstance(data, dict):
         return shots_from_parsed(data)
     return []
+
+
+def look_tags_from_parsed(parsed):
+    if not isinstance(parsed, dict):
+        return {}
+    visual_style = tag_text(
+        pick(parsed, "overallVisualStyle", "visualStyle", "overallStyle", "styleTags", "整体视觉风格", "整体风格", default=[]),
+        3,
+    )
+    tone = tag_text(
+        pick(parsed, "overallTone", "tone", "colorTone", "toneTags", "整体色调", default=[]),
+        3,
+    )
+    result = {}
+    if visual_style:
+        result["overallVisualStyle"] = visual_style
+    if tone:
+        result["overallTone"] = tone
+    return result
 
 
 def normalize_shots(raw_shots):
@@ -1186,9 +1223,11 @@ def image_size_for_aspect(aspect_value):
 
 def image_prompt_for_shot(shot, payload, index):
     board_style = str(payload.get("boardStyle") or "写实版")
-    tone = str(payload.get("tone") or "")
-    visual_style = str(payload.get("visualStyle") or "")
+    is_realistic = board_style == "写实版"
+    tone = tag_text(payload.get("tone"), 3) if is_realistic else ""
+    visual_style = tag_text(payload.get("visualStyle"), 3) if is_realistic else ""
     project = payload.get("project") or {}
+    project_style = tag_text(project.get("style"), 3) if is_realistic else ""
     _, _, aspect_label = parse_project_aspect(project.get("aspect"))
     global_notes = str(payload.get("globalNotes") or "").strip()
     ref_meta = shot.get("refMeta") if isinstance(shot.get("refMeta"), dict) else {}
@@ -1228,15 +1267,18 @@ def image_prompt_for_shot(shot, payload, index):
         "时间段": shot.get("time") or "",
         "画面重点": shot.get("focus") or "",
         "项目画幅比例": aspect_label,
-        "项目风格": project.get("style") or visual_style,
-        "整体色调": tone,
         "全局创作要求": global_notes,
     }
+    if is_realistic:
+        fields["项目风格"] = project_style or visual_style
+        fields["整体视觉风格"] = visual_style
+        fields["整体色调"] = tone
     field_text = "\n".join(f"{key}：{value}" for key, value in fields.items() if value)
     return (
         f"{style_line}\n"
         f"{ref_line}\n"
         f"请生成一张可用于广告/短视频前期沟通的分镜参考图，必须按照项目画幅比例 {aspect_label} 构图，不要默认使用 16:9，除非项目画幅本身就是 16:9。\n"
+        f"{'整体视觉风格和整体色调只作用于当前写实版真实生图，请严格参考。' if is_realistic else '当前不是写实版真实生图，不要受整体色调或整体视觉风格标签限制，只保持草图清晰可读。'}\n"
         "必须直接表现当前镜头内容，不要生成文字说明页、不要 UI 截图、不要多宫格、不要水印、不要乱码文字。\n"
         "画面必须具体可读，不能只用符号、几何形状或抽象示意代替真实场景。\n"
         "如果出现人物，保持自然真实姿态；如果有道具，要能看出道具和人物关系。\n"
@@ -1371,11 +1413,13 @@ def call_openai_compatible(payload, api_config):
         "你是一个专业但克制的广告分镜拆解助手。必须只输出合法 JSON。",
         api_config,
     )
-    return {
+    result = {
         "source": "ai",
         "model": model,
         "shots": normalize_shots(shots_from_parsed(parsed)),
     }
+    result.update(look_tags_from_parsed(parsed))
+    return result
 
 
 def enforce_script_toggles(result, payload):

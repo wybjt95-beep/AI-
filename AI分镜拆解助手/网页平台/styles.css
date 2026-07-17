@@ -753,8 +753,13 @@ h1 { margin: 4px 0 0; font-size: 22px; line-height: 1.1; }
 
 .project-grid {
   display: grid;
-  grid-template-columns: minmax(220px, 1.4fr) repeat(5, minmax(120px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(2, minmax(260px, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.project-grid .wide {
+  grid-column: span 2;
 }
 
 label,
@@ -916,9 +921,54 @@ textarea {
 }
 
 .global-row {
-  grid-template-columns: repeat(2, minmax(190px, 280px));
+  grid-template-columns: repeat(2, minmax(280px, 1fr));
   align-items: start;
   margin-bottom: 14px;
+}
+
+.choice-field {
+  padding: 12px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 18px;
+  background: rgba(255,255,255,.72);
+}
+
+.choice-field input {
+  background: #fff;
+}
+
+.option-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-height: 132px;
+  overflow: auto;
+  padding: 2px;
+}
+
+.option-grid.compact {
+  max-height: 108px;
+}
+
+.choice-pill {
+  min-height: 32px;
+  padding: 0 11px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 900;
+  transition: background .16s ease, color .16s ease, transform .16s ease;
+}
+
+.choice-pill:hover {
+  transform: translateY(-1px);
+}
+
+.choice-pill.active {
+  background: var(--ink);
+  color: #fff;
 }
 
 .analysis-grid {
@@ -1681,12 +1731,16 @@ dialog::backdrop {
     justify-self: center;
   }
   .kanban,
-  .project-grid,
-  .workbench,
-  .script-input-grid,
-  .script-tools {
-    grid-template-columns: 1fr;
-  }
+	  .project-grid,
+	  .workbench,
+	  .script-input-grid,
+	  .script-tools,
+	  .global-row {
+	    grid-template-columns: 1fr;
+	  }
+	  .project-grid .wide {
+	    grid-column: auto;
+	  }
   .status {
     position: static;
     max-height: none;

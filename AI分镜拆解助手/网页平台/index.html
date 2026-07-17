@@ -178,19 +178,66 @@
           </div>
           <div class="project-grid">
             <label><span>项目名称</span><input id="projectName" value="30秒新能源电动车广告" /></label>
-            <label><span>类型</span><input id="projectType" list="typeOptions" placeholder="可选择或手动输入" /></label>
             <label><span>时长（秒）</span><input id="duration" type="number" min="1" value="30" /></label>
-            <label><span>画幅比例</span><input id="aspect" list="aspectOptions" placeholder="如 9:16" /></label>
-            <label><span>风格</span><input id="style" list="styleOptions" placeholder="可选择或手动输入" /></label>
-            <label><span>目标平台</span><input id="platform" list="platformOptions" placeholder="可选择或手动输入" /></label>
+            <label class="choice-field"><span>类型</span><input id="projectType" placeholder="可选择或手动输入" />
+              <div class="option-grid" data-choice-group data-target="projectType" data-mode="single">
+                <button type="button" class="choice-pill" data-choice-value="广告片">广告片</button>
+                <button type="button" class="choice-pill" data-choice-value="TVC广告">TVC广告</button>
+                <button type="button" class="choice-pill" data-choice-value="品牌宣传片">品牌宣传片</button>
+                <button type="button" class="choice-pill" data-choice-value="产品宣传片">产品宣传片</button>
+                <button type="button" class="choice-pill" data-choice-value="企业宣传片">企业宣传片</button>
+                <button type="button" class="choice-pill" data-choice-value="短视频">短视频</button>
+                <button type="button" class="choice-pill" data-choice-value="信息流广告">信息流广告</button>
+                <button type="button" class="choice-pill" data-choice-value="产品种草">产品种草</button>
+                <button type="button" class="choice-pill" data-choice-value="电商详情视频">电商详情视频</button>
+                <button type="button" class="choice-pill" data-choice-value="活动预热视频">活动预热视频</button>
+                <button type="button" class="choice-pill" data-choice-value="门店探店">门店探店</button>
+                <button type="button" class="choice-pill" data-choice-value="教程科普">教程科普</button>
+              </div>
+            </label>
+            <label class="choice-field"><span>画幅比例</span><input id="aspect" placeholder="可选择或手动输入，如 9:16" />
+              <div class="option-grid" data-choice-group data-target="aspect" data-mode="single">
+                <button type="button" class="choice-pill" data-choice-value="9:16 竖屏">9:16 竖屏</button>
+                <button type="button" class="choice-pill" data-choice-value="16:9 横屏">16:9 横屏</button>
+                <button type="button" class="choice-pill" data-choice-value="4:5 信息流">4:5 信息流</button>
+                <button type="button" class="choice-pill" data-choice-value="1:1 方形">1:1 方形</button>
+                <button type="button" class="choice-pill" data-choice-value="3:4 竖版海报">3:4 竖版海报</button>
+                <button type="button" class="choice-pill" data-choice-value="21:9 宽银幕">21:9 宽银幕</button>
+              </div>
+            </label>
+            <label class="choice-field wide"><span>风格（可多选）</span><input id="style" placeholder="可多选，也可手动输入" />
+              <div class="option-grid" data-choice-group data-target="style" data-mode="multi">
+                <button type="button" class="choice-pill" data-choice-value="真实电影摄影风格">真实电影摄影风格</button>
+                <button type="button" class="choice-pill" data-choice-value="高端TVC广告风格">高端TVC广告风格</button>
+                <button type="button" class="choice-pill" data-choice-value="都市生活方式风格">都市生活方式风格</button>
+                <button type="button" class="choice-pill" data-choice-value="纪实街拍风格">纪实街拍风格</button>
+                <button type="button" class="choice-pill" data-choice-value="社媒种草短视频风格">社媒种草短视频风格</button>
+                <button type="button" class="choice-pill" data-choice-value="产品静物广告风格">产品静物广告风格</button>
+                <button type="button" class="choice-pill" data-choice-value="温柔家庭生活风格">温柔家庭生活风格</button>
+                <button type="button" class="choice-pill" data-choice-value="冷静科技产品演示风格">冷静科技产品演示风格</button>
+                <button type="button" class="choice-pill" data-choice-value="手绘分镜线稿风格">手绘分镜线稿风格</button>
+                <button type="button" class="choice-pill" data-choice-value="极简火柴人草图风格">极简火柴人草图风格</button>
+              </div>
+            </label>
+            <label class="choice-field wide"><span>目标平台</span><input id="platform" placeholder="可选择或手动输入" />
+              <div class="option-grid" data-choice-group data-target="platform" data-mode="single">
+                <button type="button" class="choice-pill" data-choice-value="抖音">抖音</button>
+                <button type="button" class="choice-pill" data-choice-value="小红书">小红书</button>
+                <button type="button" class="choice-pill" data-choice-value="视频号">视频号</button>
+                <button type="button" class="choice-pill" data-choice-value="B站">B站</button>
+                <button type="button" class="choice-pill" data-choice-value="快手">快手</button>
+                <button type="button" class="choice-pill" data-choice-value="微信朋友圈广告">微信朋友圈广告</button>
+                <button type="button" class="choice-pill" data-choice-value="淘宝/天猫">淘宝/天猫</button>
+                <button type="button" class="choice-pill" data-choice-value="京东">京东</button>
+                <button type="button" class="choice-pill" data-choice-value="线下大屏">线下大屏</button>
+                <button type="button" class="choice-pill" data-choice-value="官网">官网</button>
+                <button type="button" class="choice-pill" data-choice-value="TikTok">TikTok</button>
+                <button type="button" class="choice-pill" data-choice-value="YouTube Shorts">YouTube Shorts</button>
+              </div>
+            </label>
           </div>
           <button class="primary right" id="createProject">创建并导入脚本</button>
         </section>
-
-        <datalist id="typeOptions"><option value="广告片"></option><option value="短视频"></option><option value="产品种草"></option><option value="品牌宣传"></option></datalist>
-        <datalist id="aspectOptions"><option value="9:16 竖屏"></option><option value="16:9 横屏"></option><option value="1:1 方形"></option><option value="4:5 信息流"></option></datalist>
-        <datalist id="styleOptions"><option value="真实广告"></option><option value="生活方式"></option><option value="科技感"></option><option value="纪实感"></option></datalist>
-        <datalist id="platformOptions"><option value="抖音"></option><option value="小红书"></option><option value="视频号"></option><option value="B站"></option></datalist>
 
         <section class="workbench hidden" id="workbench">
           <aside class="status">
@@ -255,11 +302,36 @@
                 </div>
               </div>
               <div class="global-row">
-                <label><span>整体色调</span><input id="tone" list="toneOptions" value="清爽蓝绿" /></label>
-                <label><span>整体风格</span><input id="visualStyle" list="visualStyleOptions" value="真实广告" /></label>
+                <label class="choice-field"><span>整体色调（最多3个标签）</span><input id="tone" value="自然暖白日光色调、中低对比度、自然肤色与暖色灯光点缀" placeholder="可选择或手动输入" />
+                  <div class="option-grid compact" data-choice-group data-target="tone" data-mode="multi" data-max="3">
+                    <button type="button" class="choice-pill" data-choice-value="自然暖白日光色调">自然暖白日光色调</button>
+                    <button type="button" class="choice-pill" data-choice-value="低饱和冷灰蓝色调">低饱和冷灰蓝色调</button>
+                    <button type="button" class="choice-pill" data-choice-value="柔和米白暖色调">柔和米白暖色调</button>
+                    <button type="button" class="choice-pill" data-choice-value="高反差黑白色调">高反差黑白色调</button>
+                    <button type="button" class="choice-pill" data-choice-value="黑白线稿灰阶">黑白线稿灰阶</button>
+                    <button type="button" class="choice-pill" data-choice-value="明亮高饱和社媒色彩">明亮高饱和社媒色彩</button>
+                    <button type="button" class="choice-pill" data-choice-value="中低对比度">中低对比度</button>
+                    <button type="button" class="choice-pill" data-choice-value="高对比硬光">高对比硬光</button>
+                    <button type="button" class="choice-pill" data-choice-value="自然肤色与暖色灯光点缀">自然肤色与暖色灯光点缀</button>
+                    <button type="button" class="choice-pill" data-choice-value="霓虹冷紫蓝点缀">霓虹冷紫蓝点缀</button>
+                  </div>
+                </label>
+                <label class="choice-field"><span>整体视觉风格（最多3个标签）</span><input id="visualStyle" value="真实电影摄影风格、高端TVC广告风格、都市生活方式风格" placeholder="可选择或手动输入" />
+                  <div class="option-grid compact" data-choice-group data-target="visualStyle" data-mode="multi" data-max="3">
+                    <button type="button" class="choice-pill" data-choice-value="真实电影摄影风格">真实电影摄影风格</button>
+                    <button type="button" class="choice-pill" data-choice-value="高端TVC广告风格">高端TVC广告风格</button>
+                    <button type="button" class="choice-pill" data-choice-value="都市生活方式风格">都市生活方式风格</button>
+                    <button type="button" class="choice-pill" data-choice-value="纪实街拍风格">纪实街拍风格</button>
+                    <button type="button" class="choice-pill" data-choice-value="产品静物广告风格">产品静物广告风格</button>
+                    <button type="button" class="choice-pill" data-choice-value="社媒种草短视频风格">社媒种草短视频风格</button>
+                    <button type="button" class="choice-pill" data-choice-value="品牌宣传片风格">品牌宣传片风格</button>
+                    <button type="button" class="choice-pill" data-choice-value="温柔家庭生活风格">温柔家庭生活风格</button>
+                    <button type="button" class="choice-pill" data-choice-value="冷静科技产品演示风格">冷静科技产品演示风格</button>
+                    <button type="button" class="choice-pill" data-choice-value="轻喜剧短片风格">轻喜剧短片风格</button>
+                  </div>
+                </label>
               </div>
-              <datalist id="toneOptions"><option value="清爽蓝绿"></option><option value="暖色晨光"></option><option value="冷调科技"></option><option value="高级黑白"></option></datalist>
-              <datalist id="visualStyleOptions"><option value="真实广告"></option><option value="生活方式"></option><option value="科技感"></option><option value="纪实感"></option></datalist>
+              <p class="hint">整体色调和整体视觉风格只约束写实版真实生图，线稿和火柴人仍按草图逻辑生成。</p>
               <div id="shots" class="shot-list"><div class="empty">确认剧本分析后，这里会出现分镜卡片。</div></div>
               <div class="panel-actions-bottom">
                 <button class="primary" id="generate">生成分镜图</button>

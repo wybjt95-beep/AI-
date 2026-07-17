@@ -1,11 +1,21 @@
 const sampleScript = "清晨，一位年轻上班族骑着新能源电动车穿过城市街道。车辆启动平稳，行驶安静，智能仪表清晰显示速度和电量。镜头展现车辆外观、驾驶体验和城市通勤场景，突出轻便、安全、智能的产品特点。最后，主人公到达办公楼前，轻松停车，画面出现品牌口号。";
 const STORAGE_KEY = "ai-storyboard-projects-v1";
+const DEFAULT_TONE = "自然暖白日光色调、中低对比度、自然肤色与暖色灯光点缀";
+const DEFAULT_VISUAL_STYLE = "真实电影摄影风格、高端TVC广告风格、都市生活方式风格";
+const DEFAULT_PROJECT = {
+  name: "30秒新能源电动车广告",
+  type: "广告片",
+  duration: 30,
+  aspect: "9:16 竖屏",
+  style: "真实电影摄影风格、都市生活方式风格",
+  platform: "抖音",
+};
 
 const state = {
   projectId: "",
   currentUser: null,
   screen: "login",
-  project: { name: "30秒新能源电动车广告", type: "广告片", duration: 30, aspect: "9:16", style: "真实广告", platform: "抖音" },
+  project: { ...DEFAULT_PROJECT },
   detected: emptyDetected(),
   includeDialogue: false,
   includeNarration: false,
@@ -60,6 +70,14 @@ function parseList(text) {
   return unique(String(text || "").split(/[\n,，、;；]/));
 }
 
+function parseTagList(text, max = Infinity) {
+  return unique(String(text || "").split(/[\n,，、;；+＋]/)).slice(0, max);
+}
+
+function tagText(value, max = Infinity) {
+  return parseTagList(value, max).join("、");
+}
+
 function listText(items, fallback = "待补充") {
   return items.length ? items.join("、") : fallback;
 }
@@ -88,6 +106,52 @@ function creativityLabel(value = els.creativity?.value) {
 
 function updateCreativityUi() {
   if (els.creativityText) els.creativityText.textContent = creativityLabel();
+}
+
+function syncChoiceButtons(targetId) {
+  const input = $(`#${targetId}`);
+  if (!input) return;
+  const values = parseTagList(input.value);
+  document.querySelectorAll(`[data-choice-group][data-target="${targetId}"] .choice-pill`).forEach((button) => {
+    button.classList.toggle("active", values.includes(button.dataset.choiceValue));
+  });
+}
+
+function syncAllChoiceButtons() {
+  ["projectType", "aspect", "style", "platform", "tone", "visualStyle"].forEach(syncChoiceButtons);
+}
+
+function normalizeTagInput(input, max = Infinity) {
+  if (!input) return;
+  input.value = tagText(input.value, max);
+  syncChoiceButtons(input.id);
+}
+
+function handleChoiceButton(button) {
+  const group = button.closest("[data-choice-group]");
+  if (!group) return;
+  const input = $(`#${group.dataset.target}`);
+  if (!input) return;
+  const mode = group.dataset.mode || "single";
+  const value = button.dataset.choiceValue;
+  if (mode === "single") {
+    input.value = value;
+  } else {
+    const max = Number(group.dataset.max || 0);
+    const values = parseTagList(input.value);
+    const exists = values.includes(value);
+    if (exists) {
+      input.value = values.filter((item) => item !== value).join("、");
+    } else {
+      if (max && values.length >= max) {
+        showToast(`最多选择 ${max} 个标签。`);
+        return;
+      }
+      input.value = [...values, value].join("、");
+    }
+  }
+  syncChoiceButtons(input.id);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 function newProjectId() {
@@ -147,14 +211,14 @@ function projectSnapshot() {
     detected: normalizeAnalysisData(state.detected),
     includeDialogue: state.includeDialogue,
     includeNarration: state.includeNarration,
-    shots: state.shots,
-    boardsGenerated: state.boardsGenerated,
-    boardStyle: els.boardStyle.value,
-    tone: els.tone.value,
-    visualStyle: els.visualStyle.value,
-    creativity: els.creativity.value,
-  };
-}
+	    shots: state.shots,
+	    boardsGenerated: state.boardsGenerated,
+	    boardStyle: els.boardStyle.value,
+	    tone: tagText(els.tone.value, 3),
+	    visualStyle: tagText(els.visualStyle.value, 3),
+	    creativity: els.creativity.value,
+	  };
+	}
 
 function saveCurrentProject() {
   if (state.hydrating || !hasProjectContent()) return;
@@ -256,14 +320,15 @@ function restoreProject(record) {
   state.boardsGenerated = Boolean(record.boardsGenerated);
   applyProject(state.project);
   els.scriptInput.value = record.script || "";
-  els.globalNotes.value = record.globalNotes || "";
-  els.shotTarget.value = record.shotTarget || "";
-  els.boardStyle.value = record.boardStyle || "线稿";
-  els.tone.value = record.tone || "清爽蓝绿";
-  els.visualStyle.value = record.visualStyle || state.project.style || "真实广告";
-  els.creativity.value = record.creativity || "2";
-  updateCreativityUi();
-  renderAnalysis();
+	  els.globalNotes.value = record.globalNotes || "";
+	  els.shotTarget.value = record.shotTarget || "";
+	  els.boardStyle.value = record.boardStyle || "线稿";
+	  els.tone.value = tagText(record.tone || DEFAULT_TONE, 3) || DEFAULT_TONE;
+	  els.visualStyle.value = tagText(record.visualStyle || state.project.style || DEFAULT_VISUAL_STYLE, 3) || DEFAULT_VISUAL_STYLE;
+	  els.creativity.value = record.creativity || "2";
+	  updateCreativityUi();
+	  syncAllChoiceButtons();
+	  renderAnalysis();
   renderShots();
   renderBoards();
   renderSummary();
@@ -273,9 +338,9 @@ function restoreProject(record) {
 }
 
 function resetWorkspace() {
-  state.hydrating = true;
-  state.projectId = "";
-  state.project = { name: "30秒新能源电动车广告", type: "广告片", duration: 30, aspect: "9:16", style: "真实广告", platform: "抖音" };
+	  state.hydrating = true;
+	  state.projectId = "";
+	  state.project = { ...DEFAULT_PROJECT };
   state.detected = emptyDetected();
   state.includeDialogue = false;
   state.includeNarration = false;
@@ -284,12 +349,13 @@ function resetWorkspace() {
   applyProject(state.project);
   els.scriptInput.value = "";
   els.globalNotes.value = "";
-  els.shotTarget.value = "";
-  els.boardStyle.value = "线稿";
-  els.tone.value = "清爽蓝绿";
-  els.visualStyle.value = "真实广告";
-  els.creativity.value = "2";
-  updateCreativityUi();
+	  els.shotTarget.value = "";
+	  els.boardStyle.value = "线稿";
+	  els.tone.value = DEFAULT_TONE;
+	  els.visualStyle.value = DEFAULT_VISUAL_STYLE;
+	  els.creativity.value = "2";
+	  updateCreativityUi();
+	  syncAllChoiceButtons();
   renderAnalysis();
   renderShots();
   renderBoards();
@@ -318,27 +384,29 @@ function setScreen(screen) {
 }
 
 function syncProjectFromForm() {
-  state.project = {
-    name: els.projectName.value || "未命名项目",
-    type: els.projectType.value || "未填写",
-    duration: Math.max(1, Number(els.duration.value || 30)),
-    aspect: els.aspect.value || "未填写",
-    style: els.style.value || "未填写",
-    platform: els.platform.value || "未填写",
-  };
-  if (!els.visualStyle.value.trim() && els.style.value) els.visualStyle.value = els.style.value;
-  renderSummary();
-}
+	  state.project = {
+	    name: els.projectName.value || "未命名项目",
+	    type: els.projectType.value || "未填写",
+	    duration: Math.max(1, Number(els.duration.value || 30)),
+	    aspect: els.aspect.value || "未填写",
+	    style: tagText(els.style.value) || "未填写",
+	    platform: els.platform.value || "未填写",
+	  };
+	  if (!els.visualStyle.value.trim() && els.style.value) els.visualStyle.value = tagText(els.style.value, 3);
+	  syncAllChoiceButtons();
+	  renderSummary();
+	}
 
 function applyProject(project) {
   els.projectName.value = project.name || "";
   els.projectType.value = project.type || "";
   els.duration.value = project.duration || 30;
-  els.aspect.value = project.aspect || "";
-  els.style.value = project.style || "";
-  els.platform.value = project.platform || "";
-  syncProjectFromForm();
-}
+	  els.aspect.value = project.aspect || "";
+	  els.style.value = project.style || "";
+	  els.platform.value = project.platform || "";
+	  syncProjectFromForm();
+	  syncAllChoiceButtons();
+	}
 
 function detectTerms(script) {
   const has = (word) => script.includes(word);
@@ -530,16 +598,16 @@ function normalizeShot(shot, index) {
 }
 
 function splitPayload() {
-  return {
-    script: els.scriptInput.value.trim(),
-    project: state.project,
-    analysis: state.detected,
-    includeDialogue: state.includeDialogue,
-    includeNarration: state.includeNarration,
-    boardStyle: els.boardStyle.value,
-    tone: els.tone.value,
-    visualStyle: els.visualStyle.value,
-    creativity: els.creativity.value,
+	  return {
+	    script: els.scriptInput.value.trim(),
+	    project: state.project,
+	    analysis: state.detected,
+	    includeDialogue: state.includeDialogue,
+	    includeNarration: state.includeNarration,
+	    boardStyle: els.boardStyle.value,
+	    tone: tagText(els.tone.value, 3),
+	    visualStyle: tagText(els.visualStyle.value, 3),
+	    creativity: els.creativity.value,
     creativityLabel: creativityLabel(),
     shotCount: els.shotTarget.value.trim(),
     globalNotes: els.globalNotes.value.trim(),
@@ -547,10 +615,10 @@ function splitPayload() {
 }
 
 function analysisPayload() {
-  return {
-    script: els.scriptInput.value.trim(),
-    project: state.project,
-    creativity: els.creativity.value,
+	  return {
+	    script: els.scriptInput.value.trim(),
+	    project: state.project,
+	    creativity: els.creativity.value,
     shotCount: els.shotTarget.value.trim(),
     globalNotes: els.globalNotes.value.trim(),
   };
@@ -603,6 +671,25 @@ async function requestStoryboardSplit() {
   return data;
 }
 
+function generatedTagValue(data, keys, max = 3) {
+  for (const key of keys) {
+    const value = data?.[key];
+    const text = Array.isArray(value) ? value.join("、") : String(value || "");
+    const normalized = tagText(text, max);
+    if (normalized) return normalized;
+  }
+  return "";
+}
+
+function applyGeneratedLook(data) {
+  const generatedTone = generatedTagValue(data, ["overallTone", "tone", "colorTone", "整体色调"], 3);
+  const generatedStyle = generatedTagValue(data, ["overallVisualStyle", "visualStyle", "style", "整体视觉风格", "整体风格"], 3);
+  if (generatedTone) els.tone.value = generatedTone;
+  if (generatedStyle) els.visualStyle.value = generatedStyle;
+  syncChoiceButtons("tone");
+  syncChoiceButtons("visualStyle");
+}
+
 async function splitStoryboard() {
   syncAnalysisFromInputs();
   const script = els.scriptInput.value.trim();
@@ -614,6 +701,7 @@ async function splitStoryboard() {
 
   try {
     const data = await requestStoryboardSplit();
+    applyGeneratedLook(data);
     state.shots = data.shots.map(normalizeShot);
     if (data.warning) showToast(data.warning);
     else showToast(data.source === "ai" ? "AI 已完成分镜拆解，请逐条确认。" : "已使用后端演示模式拆解分镜。");
@@ -885,7 +973,7 @@ function hashText(text) {
 
 function boardPalette(seed) {
   const style = els.boardStyle.value;
-  const tone = `${els.tone.value} ${els.visualStyle.value}`;
+  const tone = style === "写实版" ? `${els.tone.value} ${els.visualStyle.value}` : "";
   const warm = hasAny(tone, ["暖", "阳光", "温柔", "清晨"]);
   const night = hasAny(tone, ["夜", "冷", "暗"]);
   const realistic = style === "写实版";
@@ -1041,6 +1129,9 @@ function boardSvg(shot, index) {
   const blob = textBlob(shot);
   const seed = hashText(blob || `${shot.no}-${index}`);
   const palette = boardPalette(seed);
+  const footer = els.boardStyle.value === "写实版"
+    ? `${els.boardStyle.value} · ${compact(els.tone.value, 14)} · 按当前分镜内容生成的参考草图`
+    : `${els.boardStyle.value} · 中性草图 · 按当前分镜内容生成的参考草图`;
   const composition = shotComposition(shot, seed);
   const close = /特写|近景/.test(String(shot.shotSize || "")) && hasAny(blob, ["手", "电脑", "杯", "手机", "书", "道具", "细节", "表情", "眼神"]);
   const peopleCount = Math.min(3, Math.max(1, parseList(shot.people).filter((item) => !item.includes("待补充")).length || (hasAny(blob, ["两人", "母亲", "女主", "男主", "相视"]) ? 2 : 1)));
@@ -1062,7 +1153,7 @@ function boardSvg(shot, index) {
     <text x="34" y="45" font-family="Microsoft YaHei" font-size="20" fill="${palette.line}" font-weight="800">${esc(shot.no)} ${esc(compact(shot.type, 10))}</text>
     <text x="318" y="45" font-family="Microsoft YaHei" font-size="15" fill="${palette.line}">${esc(compact(shot.shotSize, 8))} · ${esc(compact(shot.camera, 10))}</text>
     ${focusBox}
-    <text x="24" y="350" font-family="Microsoft YaHei" font-size="13" fill="${palette.line}" opacity=".72">${esc(els.boardStyle.value)} · ${esc(compact(els.tone.value, 14))} · 按当前分镜内容生成的参考草图</text>
+    <text x="24" y="350" font-family="Microsoft YaHei" font-size="13" fill="${palette.line}" opacity=".72">${esc(footer)}</text>
   </svg>`;
 }
 
@@ -1098,12 +1189,12 @@ function renderBoards() {
 }
 
 function imagePayload(confirmed) {
-  return {
-    project: state.project,
-    boardStyle: els.boardStyle.value,
-    tone: els.tone.value,
-    visualStyle: els.visualStyle.value,
-    creativity: els.creativity.value,
+	  return {
+	    project: state.project,
+	    boardStyle: els.boardStyle.value,
+	    tone: tagText(els.tone.value, 3),
+	    visualStyle: tagText(els.visualStyle.value, 3),
+	    creativity: els.creativity.value,
     shotCount: els.shotTarget.value.trim(),
     globalNotes: els.globalNotes.value.trim(),
     shots: confirmed.map((shot) => ({
@@ -1134,11 +1225,11 @@ function exportPayload(format) {
     script: els.scriptInput.value.trim(),
     globalNotes: els.globalNotes.value.trim(),
     detected: normalizeAnalysisData(state.detected),
-    includeDialogue: state.includeDialogue,
-    includeNarration: state.includeNarration,
-    boardStyle: els.boardStyle.value,
-    tone: els.tone.value,
-    visualStyle: els.visualStyle.value,
+	    includeDialogue: state.includeDialogue,
+	    includeNarration: state.includeNarration,
+	    boardStyle: els.boardStyle.value,
+	    tone: tagText(els.tone.value, 3),
+	    visualStyle: tagText(els.visualStyle.value, 3),
     creativity: els.creativity.value,
     creativityLabel: creativityLabel(),
     shotCount: els.shotTarget.value.trim(),
@@ -1338,12 +1429,15 @@ async function analyzeScript() {
 
 function openSample() {
   state.projectId = newProjectId();
-  applyProject({ name: "30秒新能源电动车广告", type: "广告片", duration: 30, aspect: "9:16", style: "真实广告", platform: "抖音" });
+  applyProject({ ...DEFAULT_PROJECT });
   els.scriptInput.value = sampleScript;
   els.globalNotes.value = "";
   els.shotTarget.value = "";
+  els.tone.value = DEFAULT_TONE;
+  els.visualStyle.value = DEFAULT_VISUAL_STYLE;
   els.creativity.value = "2";
   updateCreativityUi();
+  syncAllChoiceButtons();
   state.detected = detectTerms(sampleScript);
   state.shots = [];
   state.boardsGenerated = false;
@@ -1448,6 +1542,10 @@ async function hydrateMissingReferenceMeta() {
 
 function bindEvents() {
   $("#apiBtn").addEventListener("click", () => { els.apiDialog.showModal(); loadApiConfig(); });
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest(".choice-pill[data-choice-value]");
+    if (button) handleChoiceButton(button);
+  });
   els.authBtn.addEventListener("click", () => showToast(`当前账号：${state.currentUser?.email || "未登录"}`));
   els.authForm.addEventListener("submit", (event) => event.preventDefault());
   els.loginBtn.addEventListener("click", () => submitAuth("login"));
@@ -1561,7 +1659,14 @@ function bindEvents() {
   });
   document.querySelectorAll("[data-style]").forEach((btn) => btn.addEventListener("click", () => changeBoardStyle(btn.dataset.style)));
   ["projectName", "projectType", "duration", "aspect", "style", "platform"].forEach((id) => $(`#${id}`).addEventListener("input", () => { syncProjectFromForm(); scheduleAutoSave(); }));
-  [els.boardStyle, els.tone, els.visualStyle].forEach((node) => node.addEventListener("input", scheduleAutoSave));
+  ["projectType", "aspect", "style", "platform"].forEach((id) => $(`#${id}`).addEventListener("blur", () => {
+    if (id === "style") normalizeTagInput($(`#${id}`));
+    else syncChoiceButtons(id);
+    syncProjectFromForm();
+    scheduleAutoSave();
+  }));
+  [els.boardStyle, els.tone, els.visualStyle].forEach((node) => node.addEventListener("input", () => { syncChoiceButtons(node.id); scheduleAutoSave(); }));
+  [els.tone, els.visualStyle].forEach((node) => node.addEventListener("blur", () => { normalizeTagInput(node, 3); scheduleAutoSave(); }));
 }
 
 renderDashboard();
@@ -1571,5 +1676,6 @@ renderAnalysis();
 renderShots();
 renderBoards();
 updateCreativityUi();
+syncAllChoiceButtons();
 setScreen("login");
 loadSession();
