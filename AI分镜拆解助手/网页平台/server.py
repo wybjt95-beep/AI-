@@ -1154,11 +1154,42 @@ def call_text_model_json(prompt, system_prompt, api_config):
     return extract_json(content), model
 
 
+def parse_project_aspect(aspect_value):
+    text = str(aspect_value or "").strip()
+    normalized = text.replace("：", ":").replace("×", "x").replace("X", "x")
+    match = re.search(r"(\d+(?:\.\d+)?)\s*[:x/]\s*(\d+(?:\.\d+)?)", normalized)
+    if match:
+        width = float(match.group(1))
+        height = float(match.group(2))
+        if width > 0 and height > 0:
+            return width, height, f"{match.group(1)}:{match.group(2)}"
+    if any(word in text for word in ["竖屏", "竖版", "手机竖屏"]):
+        return 9, 16, "9:16"
+    if any(word in text for word in ["横屏", "横版", "宽屏"]):
+        return 16, 9, "16:9"
+    if any(word in text for word in ["方形", "正方形"]):
+        return 1, 1, "1:1"
+    return 16, 9, "16:9"
+
+
+def image_size_for_aspect(aspect_value):
+    width, height, _ = parse_project_aspect(aspect_value)
+    ratio = width / height if height else 1
+    if 0.92 <= ratio <= 1.08:
+        return "1024x1024"
+    if ratio > 1:
+        target_width = min(1792, max(1024, int(round(1024 * ratio / 64) * 64)))
+        return f"{target_width}x1024"
+    target_height = min(1792, max(1024, int(round(1024 / ratio / 64) * 64)))
+    return f"1024x{target_height}"
+
+
 def image_prompt_for_shot(shot, payload, index):
     board_style = str(payload.get("boardStyle") or "写实版")
     tone = str(payload.get("tone") or "")
     visual_style = str(payload.get("visualStyle") or "")
     project = payload.get("project") or {}
+    _, _, aspect_label = parse_project_aspect(project.get("aspect"))
     global_notes = str(payload.get("globalNotes") or "").strip()
     ref_meta = shot.get("refMeta") if isinstance(shot.get("refMeta"), dict) else {}
     if board_style == "线稿":
@@ -1182,7 +1213,7 @@ def image_prompt_for_shot(shot, payload, index):
         balance_hint = {"left": "左侧视觉重量更强", "right": "右侧视觉重量更强"}.get(balance, "左右视觉重量均衡")
         ref_line = (
             f"参考用户上传图片的构图关系：主体大致位于{horizontal}，{vertical}，画面比例约为{aspect or '常规横图'}，"
-            f"{balance_hint}，整体{light_hint}、{warm_hint}。只借鉴构图、主体位置、画面层次和光线倾向；必须重新绘制，"
+            f"{balance_hint}，整体{light_hint}、{warm_hint}。只借鉴构图、主体位置、画面层次和光线倾向；如果参考图比例与项目画幅冲突，必须以项目画幅 {aspect_label} 为准；必须重新绘制，"
             "不要复刻原图具体人物、脸、服装、背景、品牌和可识别细节。"
         )
     fields = {
@@ -1196,6 +1227,7 @@ def image_prompt_for_shot(shot, payload, index):
         "产品": shot.get("product") or "",
         "时间段": shot.get("time") or "",
         "画面重点": shot.get("focus") or "",
+        "项目画幅比例": aspect_label,
         "项目风格": project.get("style") or visual_style,
         "整体色调": tone,
         "全局创作要求": global_notes,
@@ -1204,7 +1236,7 @@ def image_prompt_for_shot(shot, payload, index):
     return (
         f"{style_line}\n"
         f"{ref_line}\n"
-        "请生成一张可用于广告/短视频前期沟通的分镜参考图，16:9 横图构图。\n"
+        f"请生成一张可用于广告/短视频前期沟通的分镜参考图，必须按照项目画幅比例 {aspect_label} 构图，不要默认使用 16:9，除非项目画幅本身就是 16:9。\n"
         "必须直接表现当前镜头内容，不要生成文字说明页、不要 UI 截图、不要多宫格、不要水印、不要乱码文字。\n"
         "画面必须具体可读，不能只用符号、几何形状或抽象示意代替真实场景。\n"
         "如果出现人物，保持自然真实姿态；如果有道具，要能看出道具和人物关系。\n"
@@ -1246,6 +1278,8 @@ def generate_storyboard_images(payload, user=None):
     if not isinstance(shots, list) or not shots:
         raise ValueError("缺少要生成图片的分镜")
 
+    project = payload.get("project") or {}
+    image_size = image_size_for_aspect(project.get("aspect"))
     results = []
     for index, shot in enumerate(shots[:8]):
         if not isinstance(shot, dict):
@@ -1255,7 +1289,7 @@ def generate_storyboard_images(payload, user=None):
             "model": image_model,
             "prompt": prompt,
             "n": 1,
-            "size": "1024x1024",
+            "size": image_size,
             "response_format": "b64_json",
         }
         try:
@@ -1267,7 +1301,13 @@ def generate_storyboard_images(payload, user=None):
             try:
                 response_body = post_image_generation(api_base, api_key, request_body)
             except (urllib.error.HTTPError, ApiRequestError) as retry_exc:
-                raise ValueError(http_error_message(retry_exc)) from retry_exc
+                if image_size == "1024x1024" or getattr(retry_exc, "code", None) not in {400, 422}:
+                    raise ValueError(http_error_message(retry_exc)) from retry_exc
+                request_body["size"] = "1024x1024"
+                try:
+                    response_body = post_image_generation(api_base, api_key, request_body)
+                except (urllib.error.HTTPError, ApiRequestError) as final_exc:
+                    raise ValueError(http_error_message(final_exc)) from final_exc
         results.append({
             "no": str(shot.get("no") or index + 1).zfill(2),
             "image": image_from_generation_response(response_body),
