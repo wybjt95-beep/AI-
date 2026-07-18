@@ -14,6 +14,7 @@ const DEFAULT_PROJECT = {
   style: "真实电影摄影风格、都市生活方式风格",
   platform: "抖音",
 };
+const MAX_SHOT_COUNT = 1200;
 
 const state = {
   projectId: "",
@@ -101,30 +102,35 @@ function first(items, fallback) {
 function requestedShotCount() {
   const value = Number(els.shotTarget?.value || "");
   if (!Number.isFinite(value) || value <= 0) return 0;
-  return Math.min(24, Math.max(1, Math.round(value)));
+  return Math.min(MAX_SHOT_COUNT, Math.max(1, Math.round(value)));
 }
 
 function suggestShotCount() {
   const script = els.scriptInput.value.trim();
-  const units = scriptUnits(script, 24);
+  const units = scriptUnits(script, MAX_SHOT_COUNT);
   const duration = readProjectDuration();
   const entityCount = ["people", "locations", "props", "product"].reduce((sum, key) => sum + (state.detected[key] || []).length, 0);
   let min = 4;
-  let max = 6;
+  let max = 8;
+  let ideal = Math.round(duration * 0.6);
   if (duration <= 10) {
-    min = 3; max = 5;
+    min = 4; max = 8; ideal = Math.round(duration * 0.6);
   } else if (duration <= 15) {
-    min = 4; max = 6;
+    min = 6; max = 10; ideal = Math.round(duration * 0.6);
   } else if (duration <= 30) {
-    min = 6; max = 8;
+    min = 10; max = 18; ideal = Math.round(duration * 0.45);
   } else if (duration <= 60) {
-    min = 8; max = 12;
+    min = 18; max = 35; ideal = Math.round(duration * 0.42);
   } else {
-    min = 10; max = 16;
+    min = Math.round(duration / 8);
+    max = Math.round(duration / 3.5);
+    ideal = Math.round(duration / 5);
   }
   const densityBonus = entityCount >= 8 ? 2 : entityCount >= 5 ? 1 : 0;
-  const unitBased = Math.max(units.length, Math.round(duration / 5));
-  return Math.min(24, Math.max(min, Math.min(max + densityBonus, unitBased + densityBonus)));
+  const textDensity = Math.ceil(script.length / 80);
+  const unitBased = Math.max(units.length, textDensity);
+  const blended = Math.round(ideal * 0.7 + Math.min(max, unitBased) * 0.3) + densityBonus;
+  return Math.min(MAX_SHOT_COUNT, Math.max(min, Math.min(max + densityBonus, blended)));
 }
 
 function applySuggestedShotCount() {
@@ -668,7 +674,7 @@ function localShotType(text, index, total) {
 function localStoryboardShots() {
   const duration = readProjectDuration();
   const targetCount = requestedShotCount();
-  let units = scriptUnits(els.scriptInput.value, targetCount || 8);
+  let units = scriptUnits(els.scriptInput.value, targetCount || suggestShotCount());
   if (!units.length) {
     units = [
       `在${first(state.detected.locations, "主要场景")}建立人物和空间关系`,
@@ -677,7 +683,7 @@ function localStoryboardShots() {
       "用留白或稳定构图完成收束",
     ];
   }
-  const total = targetCount || (duration >= 15 ? Math.min(8, Math.max(4, units.length)) : Math.min(6, Math.max(3, units.length)));
+  const total = targetCount || suggestShotCount();
   while (units.length < total) units.push(units[units.length - 1]);
   units = units.slice(0, total);
   const base = Math.floor(duration / units.length);

@@ -1009,7 +1009,7 @@ def requested_shot_count(payload):
         value = int(float(raw))
     except ValueError:
         return None
-    return min(24, max(1, value))
+    return min(1200, max(1, value))
 
 
 def storyboard_bank():
