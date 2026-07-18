@@ -159,12 +159,6 @@
               <p>先填写项目类型、时长、画幅、风格和目标平台，再导入脚本。</p>
               <button class="text-btn" id="openNew">选择新建</button>
             </article>
-            <article>
-              <span class="tag">平台设置</span>
-              <h4>API 接入</h4>
-              <p>API Key 属于平台级配置，不写入项目导出，避免和项目资料混在一起。</p>
-              <button class="text-btn" id="apiCardBtn">打开 API 设置</button>
-            </article>
           </div>
         </section>
 
@@ -276,7 +270,6 @@
                 </label>
               </div>
               <div class="script-tools">
-                <label><span>分镜图类型</span><select id="boardStyle"><option>线稿</option><option>火柴人</option><option>写实版</option></select></label>
                 <label><span>镜头数量</span><input id="shotTarget" type="number" min="1" max="24" placeholder="留空由系统判断" /></label>
                 <label class="creativity-control"><span>创意强度 <output id="creativityValue">60</output></span><input id="creativity" type="range" min="0" max="100" step="1" value="60" /><small id="creativityText">当前：60/100 · 平衡发挥</small></label>
                 <button class="primary" id="analyze">下一步：剧本分析</button>
@@ -332,7 +325,8 @@
               </div>
               <p class="hint">整体风格和整体色调只约束写实版真实生图；线稿和火柴人仍按草图逻辑生成。</p>
               <div id="shots" class="shot-list"><div class="empty">确认剧本分析后，这里会出现分镜卡片。</div></div>
-              <div class="panel-actions-bottom">
+              <div class="panel-actions-bottom image-generate-bar">
+                <label><span>分镜图类型</span><select id="boardStyle"><option value="">请选择分镜图风格</option><option>线稿</option><option>火柴人</option><option>写实版</option></select></label>
                 <button class="primary" id="generate">生成分镜图</button>
               </div>
             </section>

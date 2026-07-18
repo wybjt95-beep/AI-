@@ -1726,10 +1726,12 @@ dialog::backdrop {
 }
 
 .topbar {
-  position: static;
+  position: sticky;
+  top: 0;
   padding: 20px 16px 28px;
   border: 0;
   border-radius: 0;
+  z-index: 80;
 }
 
 .top-actions .ghost {
@@ -1808,7 +1810,7 @@ dialog::backdrop {
 }
 
 .script-tools {
-  grid-template-columns: 170px 160px minmax(260px, 1fr) 210px;
+  grid-template-columns: 160px minmax(260px, 1fr) 210px;
   gap: 14px;
 }
 
@@ -1845,7 +1847,13 @@ dialog::backdrop {
 .panel-actions-bottom {
   display: flex;
   justify-content: flex-end;
+  gap: 14px;
+  align-items: end;
   margin-top: 18px;
+}
+
+.image-generate-bar label {
+  width: min(260px, 100%);
 }
 
 .panel-actions-bottom .primary {
@@ -1970,7 +1978,8 @@ dialog::backdrop {
     align-items: flex-start;
   }
   .topbar {
-    position: static;
+    position: sticky;
+    top: 0;
   }
   .stage,
   .export-actions,

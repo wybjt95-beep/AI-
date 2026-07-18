@@ -390,12 +390,6 @@ function renderDashboard() {
       <p>先填写项目类型、时长、画幅、风格和目标平台，再导入脚本。</p>
       <button class="text-btn" id="openNew">选择新建</button>
     </article>
-    <article>
-      <span class="tag">平台设置</span>
-      <h4>API 接入</h4>
-      <p>API Key 属于平台级配置，不写入项目导出，避免和项目资料混在一起。</p>
-      <button class="text-btn" id="apiCardBtn">打开 API 设置</button>
-    </article>
     ${saved.map(projectPreview).join("")}
   `;
 }
@@ -420,7 +414,7 @@ function restoreProject(record) {
   els.scriptInput.value = record.script || "";
   els.globalNotes.value = record.globalNotes || "";
   els.shotTarget.value = record.shotTarget || "";
-  els.boardStyle.value = record.boardStyle || "线稿";
+  els.boardStyle.value = record.boardStyle || "";
   els.tone.value = tagText(record.overallColorTone || record.tone || DEFAULT_TONE, 3) || DEFAULT_TONE;
   els.visualStyle.value = tagText(record.overallVisualStyle || record.visualStyle || state.project.style || DEFAULT_VISUAL_STYLE, 3) || DEFAULT_VISUAL_STYLE;
   els.creativity.value = normalizeCreativityValue(record.creativity ?? 60, record.creativityScale || 4);
@@ -449,7 +443,7 @@ function resetWorkspace() {
   els.scriptInput.value = "";
   els.globalNotes.value = "";
 	  els.shotTarget.value = "";
-	  els.boardStyle.value = "线稿";
+	  els.boardStyle.value = "";
 	  els.tone.value = DEFAULT_TONE;
 	  els.visualStyle.value = DEFAULT_VISUAL_STYLE;
 	  els.creativity.value = "60";
@@ -683,6 +677,35 @@ function localStoryboardShots() {
 function textValue(value, fallback = "") {
   if (Array.isArray(value)) return value.filter(Boolean).join("、") || fallback;
   return String(value ?? "").trim() || fallback;
+}
+
+function isPlaceholderValue(value) {
+  const text = String(value || "").trim();
+  return !text || /^待补充|^无台词$|^无旁白$|^未识别$|^未上传$/.test(text);
+}
+
+function cleanField(value) {
+  return isPlaceholderValue(value) ? "" : String(value || "").trim();
+}
+
+function regenerateShotFromFields(shot) {
+  const time = cleanField(shot.time);
+  const location = cleanField(shot.location);
+  const people = cleanField(shot.people);
+  const product = cleanField(shot.product);
+  const props = cleanField(shot.props);
+  const focus = cleanField(shot.focus);
+  const subject = [people, product].filter(Boolean).join("与") || people || product || "主要主体";
+  const propText = props ? `，画面中包含${props}` : "";
+  const spaceText = [time, location].filter(Boolean).join("，") || "当前场景";
+  const focusText = focus ? `，画面重点是${focus}` : "，保留原镜头的动作与叙事节奏";
+  shot.content = `${spaceText}中，镜头围绕${subject}展开${propText}${focusText}。`;
+  shot.boardImage = "";
+  shot.boardWarning = "";
+  shot.boardSource = "";
+  shot.boardModel = "";
+  shot.status = "待确认";
+  state.boardsGenerated = false;
 }
 
 function normalizeShot(shot, index) {
@@ -1061,6 +1084,7 @@ function renderShots() {
       </div>
       <div class="shot-side">
         <span class="status-pill ${cls}">${shot.status}</span>
+        <button class="mini" data-action="regen-shot">按字段更新描述</button>
         <button class="mini" data-action="confirm">确认此镜头</button>
         <button class="mini" data-action="unconfirm">取消确认</button>
         <button class="mini" data-action="revise">标记修改</button>
@@ -1380,6 +1404,7 @@ function exportPayload(format) {
       focus: shot.focus,
       status: shot.status,
       refName: shot.refName,
+      boardImage: shot.boardImage || "",
       boardSource: shot.boardSource || "",
       boardModel: shot.boardModel || "",
       boardWarning: shot.boardWarning || "",
@@ -1448,6 +1473,7 @@ async function generateBoards() {
   syncProjectFromForm();
   const confirmed = state.shots.filter((shot) => shot.status === "已确认");
   if (!confirmed.length) return showToast("请先确认至少一个镜头。");
+  if (!els.boardStyle.value) return showToast("请先选择分镜图类型，再生成分镜图。");
   await hydrateMissingReferenceMeta();
   confirmed.forEach((shot) => {
     shot.boardWarning = "";
@@ -1701,7 +1727,6 @@ function bindEvents() {
   els.dashboard.addEventListener("click", async (event) => {
     if (event.target.id === "openSample") return openSample();
     if (event.target.id === "openNew") return startNewProjectSetup();
-    if (event.target.id === "apiCardBtn") { els.apiDialog.showModal(); loadApiConfig(); return; }
     const openId = event.target.dataset.openProject;
     if (openId) {
       const record = loadSavedProjects().find((item) => item.id === openId);
@@ -1777,6 +1802,10 @@ function bindEvents() {
     if (action === "confirm") shot.status = "已确认";
     if (action === "unconfirm") shot.status = "待确认";
     if (action === "revise") shot.status = "需修改";
+    if (action === "regen-shot") {
+      regenerateShotFromFields(shot);
+      showToast("已按当前字段更新这一镜头的画面内容。");
+    }
     if (action === "remove-ref") {
       shot.refName = "";
       shot.refData = "";

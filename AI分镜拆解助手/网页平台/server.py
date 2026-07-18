@@ -30,7 +30,7 @@ DATA_DIR = ROOT / ".data"
 STORE_PATH = DATA_DIR / "store.json"
 DB_PATH = DATA_DIR / "app.db"
 SECRET_PATH = DATA_DIR / "app_secret"
-MAX_BODY_BYTES = 5_000_000
+MAX_BODY_BYTES = 25_000_000
 DEFAULT_SESSION_MAX_AGE = 1209600
 CONFIG_KEYS = [
     "AI_PROVIDER",
@@ -1696,6 +1696,54 @@ def export_shot_rows(payload):
     return rows
 
 
+def parse_export_image(value):
+    text = str(value or "").strip()
+    match = re.match(r"^data:(image/[a-zA-Z0-9.+-]+);base64,(.+)$", text, re.S)
+    if match:
+        mime = match.group(1).lower()
+        raw = re.sub(r"\s+", "", match.group(2))
+        try:
+            data = base64.b64decode(raw, validate=True)
+        except Exception:
+            return None
+    elif text.startswith(("http://", "https://")):
+        try:
+            request = urllib.request.Request(text, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(request, timeout=20) as response:
+                data = response.read(8_000_000)
+                mime = (response.headers.get("Content-Type") or mimetypes.guess_type(text)[0] or "").split(";")[0].lower()
+        except Exception:
+            return None
+    else:
+        return None
+    ext_map = {
+        "image/png": "png",
+        "image/jpeg": "jpg",
+        "image/jpg": "jpg",
+    }
+    ext = ext_map.get(mime)
+    if not ext or not data:
+        return None
+    return {"mime": "image/jpeg" if ext == "jpg" else mime, "ext": ext, "data": data}
+
+
+def export_board_images(payload):
+    images = []
+    for shot in payload.get("shots") or []:
+        if not isinstance(shot, dict):
+            continue
+        parsed = parse_export_image(shot.get("boardImage"))
+        if not parsed:
+            continue
+        images.append({
+            **parsed,
+            "no": str(shot.get("no") or len(images) + 1).zfill(2),
+            "type": export_text(shot.get("type"), "镜头"),
+            "content": export_text(shot.get("content"), ""),
+        })
+    return images
+
+
 def col_name(index):
     name = ""
     while index:
@@ -1711,7 +1759,7 @@ def xlsx_cell(row_index, col_index, value, style=None):
     return f'<c r="{ref}" t="inlineStr"{style_attr}><is><t xml:space="preserve">{text}</t></is></c>'
 
 
-def xlsx_sheet_xml(rows, freeze_header=False):
+def xlsx_sheet_xml(rows, freeze_header=False, drawing_rel_id=None, row_heights=None):
     max_cols = max((len(row) for row in rows), default=1)
     cols = "".join(f'<col min="{i}" max="{i}" width="18" customWidth="1"/>' for i in range(1, max_cols + 1))
     sheet_view = '<sheetViews><sheetView workbookViewId="0">'
@@ -1719,25 +1767,64 @@ def xlsx_sheet_xml(rows, freeze_header=False):
         sheet_view += '<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>'
     sheet_view += "</sheetView></sheetViews>"
     row_xml = []
+    row_heights = row_heights or {}
     for row_index, row in enumerate(rows, 1):
+        height = row_heights.get(row_index)
+        row_attr = f' ht="{height}" customHeight="1"' if height else ""
         cells = "".join(xlsx_cell(row_index, col_index, value, "1" if freeze_header and row_index == 1 else None) for col_index, value in enumerate(row, 1))
-        row_xml.append(f'<row r="{row_index}">{cells}</row>')
+        row_xml.append(f'<row r="{row_index}"{row_attr}>{cells}</row>')
     dimension = f'A1:{col_name(max_cols)}{max(len(rows), 1)}'
+    drawing_xml = f'<drawing r:id="{drawing_rel_id}"/>' if drawing_rel_id else ""
     return (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
         'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
         f'<dimension ref="{dimension}"/>{sheet_view}{cols}<sheetData>{"".join(row_xml)}</sheetData>'
-        "</worksheet>"
+        f"{drawing_xml}</worksheet>"
+    )
+
+
+def xlsx_drawing_xml(images):
+    anchors = []
+    for index, image in enumerate(images, 1):
+        row = 2 + (index - 1) * 12
+        anchors.append(
+            '<xdr:twoCellAnchor editAs="oneCell">'
+            f'<xdr:from><xdr:col>2</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>{row - 1}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>'
+            f'<xdr:to><xdr:col>6</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>{row + 9}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>'
+            '<xdr:pic>'
+            f'<xdr:nvPicPr><xdr:cNvPr id="{index}" name="分镜图 {xml_clean(image["no"])}"/><xdr:cNvPicPr/></xdr:nvPicPr>'
+            '<xdr:blipFill><a:blip '
+            f'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="rIdImg{index}"/>'
+            '<a:stretch><a:fillRect/></a:stretch></xdr:blipFill>'
+            '<xdr:spPr><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr>'
+            '</xdr:pic><xdr:clientData/></xdr:twoCellAnchor>'
+        )
+    return (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" '
+        'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
+        f'{"".join(anchors)}</xdr:wsDr>'
     )
 
 
 def build_xlsx(payload):
+    board_images = export_board_images(payload)
+    image_rows = [["镜号", "镜头", "分镜图"]]
+    image_row_heights = {}
+    for index, image in enumerate(board_images, 1):
+        row = 2 + (index - 1) * 12
+        image_rows.append([image["no"], image["type"], "见右侧嵌入图片"])
+        image_row_heights[row] = 180
+        for _ in range(11):
+            image_rows.append(["", "", ""])
     sheets = [
         ("项目信息", [["字段", "内容"]] + export_project_rows(payload)),
         ("标准分镜表", export_shot_rows(payload)),
         ("剧本分析", export_analysis_rows(payload)),
     ]
+    if board_images:
+        sheets.append(("分镜图", image_rows))
     workbook_sheets = "".join(f'<sheet name="{xml_clean(name)}" sheetId="{i}" r:id="rId{i}"/>' for i, (name, _) in enumerate(sheets, 1))
     workbook_rels = "".join(
         f'<Relationship Id="rId{i}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet{i}.xml"/>'
@@ -1748,14 +1835,22 @@ def build_xlsx(payload):
         f'<Override PartName="/xl/worksheets/sheet{i}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
         for i in range(1, len(sheets) + 1)
     )
+    if board_images:
+        content_types += '<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>'
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        image_defaults = ""
+        if any(image["ext"] == "png" for image in board_images):
+            image_defaults += '<Default Extension="png" ContentType="image/png"/>'
+        if any(image["ext"] == "jpg" for image in board_images):
+            image_defaults += '<Default Extension="jpg" ContentType="image/jpeg"/>'
         zf.writestr(
             "[Content_Types].xml",
             '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
             '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
             '<Default Extension="xml" ContentType="application/xml"/>'
+            f"{image_defaults}"
             '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
             '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
             f"{content_types}</Types>",
@@ -1792,7 +1887,33 @@ def build_xlsx(payload):
             "</styleSheet>",
         )
         for index, (_, rows) in enumerate(sheets, 1):
-            zf.writestr(f"xl/worksheets/sheet{index}.xml", xlsx_sheet_xml(rows, freeze_header=True))
+            is_image_sheet = board_images and index == len(sheets)
+            zf.writestr(
+                f"xl/worksheets/sheet{index}.xml",
+                xlsx_sheet_xml(rows, freeze_header=True, drawing_rel_id="rIdDrawing1" if is_image_sheet else None, row_heights=image_row_heights if is_image_sheet else None),
+            )
+        if board_images:
+            image_sheet_index = len(sheets)
+            zf.writestr(
+                f"xl/worksheets/_rels/sheet{image_sheet_index}.xml.rels",
+                '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                '<Relationship Id="rIdDrawing1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/>'
+                "</Relationships>",
+            )
+            drawing_rels = "".join(
+                f'<Relationship Id="rIdImg{i}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image{i}.{image["ext"]}"/>'
+                for i, image in enumerate(board_images, 1)
+            )
+            zf.writestr(
+                "xl/drawings/_rels/drawing1.xml.rels",
+                '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                f"{drawing_rels}</Relationships>",
+            )
+            zf.writestr("xl/drawings/drawing1.xml", xlsx_drawing_xml(board_images))
+            for i, image in enumerate(board_images, 1):
+                zf.writestr(f"xl/media/image{i}.{image['ext']}", image["data"])
     return buffer.getvalue()
 
 
@@ -1809,6 +1930,22 @@ def docx_text_run(text):
 def docx_paragraph(text, style=None):
     style_xml = f'<w:pPr><w:pStyle w:val="{style}"/></w:pPr>' if style else ""
     return f"<w:p>{style_xml}<w:r>{docx_text_run(text)}</w:r></w:p>"
+
+
+def docx_image_paragraph(rel_id, name, cx=5486400, cy=3086100):
+    clean_name = xml_clean(name)
+    return (
+        "<w:p><w:r><w:drawing><wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\">"
+        f"<wp:extent cx=\"{cx}\" cy=\"{cy}\"/><wp:effectExtent l=\"0\" t=\"0\" r=\"0\" b=\"0\"/>"
+        f"<wp:docPr id=\"{rel_id}\" name=\"{clean_name}\"/><wp:cNvGraphicFramePr/>"
+        "<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">"
+        "<pic:pic><pic:nvPicPr>"
+        f"<pic:cNvPr id=\"{rel_id}\" name=\"{clean_name}\"/><pic:cNvPicPr/>"
+        "</pic:nvPicPr><pic:blipFill>"
+        f"<a:blip r:embed=\"rIdImage{rel_id}\"/><a:stretch><a:fillRect/></a:stretch>"
+        "</pic:blipFill><pic:spPr><a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>"
+        "</a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>"
+    )
 
 
 def docx_table(rows):
@@ -1836,6 +1973,7 @@ def docx_table(rows):
 
 def build_docx(payload):
     project = payload.get("project") or {}
+    board_images = export_board_images(payload)
     body = [
         docx_paragraph(project.get("name") or "AI分镜拆解助手导出", "Title"),
         docx_paragraph("项目交付文档", "Subtitle"),
@@ -1845,12 +1983,27 @@ def build_docx(payload):
         docx_table(export_analysis_rows(payload)),
         docx_paragraph("标准分镜表", "Heading1"),
         docx_table(export_shot_rows(payload)),
+        docx_paragraph("分镜图", "Heading1"),
+    ]
+    if board_images:
+        for index, image in enumerate(board_images, 1):
+            body.append(docx_paragraph(f"{image['no']} {image['type']}", "Heading2"))
+            body.append(docx_image_paragraph(index, f"分镜图 {image['no']}"))
+            if image.get("content"):
+                body.append(docx_paragraph(image["content"]))
+    else:
+        body.append(docx_paragraph("当前导出未包含真实生图。请先生成分镜图后再导出。"))
+    body.extend([
         docx_paragraph("原始脚本", "Heading1"),
         docx_paragraph(payload.get("script") or "未填写脚本。"),
-    ]
+    ])
     document_xml = (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
+        'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" '
+        'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+        'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">'
         f"<w:body>{''.join(body)}"
         '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134"/></w:sectPr>'
         "</w:body></w:document>"
@@ -1861,7 +2014,17 @@ def build_docx(payload):
         '<w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:rPr><w:b/><w:sz w:val="40"/></w:rPr></w:style>'
         '<w:style w:type="paragraph" w:styleId="Subtitle"><w:name w:val="Subtitle"/><w:rPr><w:color w:val="666666"/><w:sz w:val="24"/></w:rPr></w:style>'
         '<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="Heading 1"/><w:rPr><w:b/><w:sz w:val="28"/></w:rPr></w:style>'
+        '<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="Heading 2"/><w:rPr><w:b/><w:sz w:val="24"/></w:rPr></w:style>'
         "</w:styles>"
+    )
+    image_defaults = ""
+    if any(image["ext"] == "png" for image in board_images):
+        image_defaults += '<Default Extension="png" ContentType="image/png"/>'
+    if any(image["ext"] == "jpg" for image in board_images):
+        image_defaults += '<Default Extension="jpg" ContentType="image/jpeg"/>'
+    image_rels = "".join(
+        f'<Relationship Id="rIdImage{i}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image{i}.{image["ext"]}"/>'
+        for i, image in enumerate(board_images, 1)
     )
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -1871,6 +2034,7 @@ def build_docx(payload):
             '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
             '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
             '<Default Extension="xml" ContentType="application/xml"/>'
+            f"{image_defaults}"
             '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
             '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>'
             "</Types>",
@@ -1889,8 +2053,10 @@ def build_docx(payload):
             '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
             '<Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
-            "</Relationships>",
+            f"{image_rels}</Relationships>",
         )
+        for i, image in enumerate(board_images, 1):
+            zf.writestr(f"word/media/image{i}.{image['ext']}", image["data"])
     return buffer.getvalue()
 
 
@@ -1915,11 +2081,24 @@ def ppt_text_box(shape_id, x, y, cx, cy, paragraphs):
     )
 
 
-def ppt_slide_xml(title, lines, slide_index):
+def ppt_picture(shape_id, rel_id, x, y, cx, cy, name):
+    return (
+        "<p:pic>"
+        f'<p:nvPicPr><p:cNvPr id="{shape_id}" name="{xml_clean(name)}"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>'
+        f'<p:blipFill><a:blip r:embed="{rel_id}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>'
+        f'<p:spPr><a:xfrm><a:off x="{x}" y="{y}"/><a:ext cx="{cx}" cy="{cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>'
+        "</p:pic>"
+    )
+
+
+def ppt_slide_xml(title, lines, slide_index, image=None):
+    text_width = 10800000 if not image else 4700000
     shapes = [
         ppt_text_box(2, 620000, 420000, 10500000, 900000, [ppt_paragraph(title, 3200, True)]),
-        ppt_text_box(3, 660000, 1420000, 10800000, 4800000, [ppt_paragraph(line, 1900, False) for line in lines]),
+        ppt_text_box(3, 660000, 1420000, text_width, 4800000, [ppt_paragraph(line, 1900, False) for line in lines]),
     ]
+    if image:
+        shapes.append(ppt_picture(4, "rIdImage1", 5650000, 1320000, 5600000, 3600000, f"分镜图 {image['no']}"))
     return (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
@@ -1983,7 +2162,14 @@ def ppt_slides(payload):
 
 
 def build_pptx(payload):
-    slides = ppt_slides(payload)
+    board_images = export_board_images(payload)
+    slides = [{"title": title, "lines": lines, "image": None} for title, lines in ppt_slides(payload)]
+    for image in board_images:
+        slides.append({
+            "title": f"分镜图 {image['no']} {image['type']}",
+            "lines": [image.get("content") or "已生成分镜图。"],
+            "image": image,
+        })
     slide_overrides = "".join(
         f'<Override PartName="/ppt/slides/slide{i}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>'
         for i in range(1, len(slides) + 1)
@@ -1995,6 +2181,11 @@ def build_pptx(payload):
     )
     slide_ids = "".join(f'<p:sldId id="{255 + i}" r:id="rId{i + 1}"/>' for i in range(1, len(slides) + 1))
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    image_defaults = ""
+    if any(image["ext"] == "png" for image in board_images):
+        image_defaults += '<Default Extension="png" ContentType="image/png"/>'
+    if any(image["ext"] == "jpg" for image in board_images):
+        image_defaults += '<Default Extension="jpg" ContentType="image/jpeg"/>'
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr(
@@ -2003,6 +2194,7 @@ def build_pptx(payload):
             '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
             '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
             '<Default Extension="xml" ContentType="application/xml"/>'
+            f"{image_defaults}"
             '<Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>'
             '<Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>'
             '<Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>'
@@ -2102,8 +2294,18 @@ def build_pptx(payload):
             'xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">'
             "<Application>AI分镜拆解助手</Application></Properties>",
         )
-        for index, (title, lines) in enumerate(slides, 1):
-            zf.writestr(f"ppt/slides/slide{index}.xml", ppt_slide_xml(title, lines, index))
+        for index, slide in enumerate(slides, 1):
+            zf.writestr(f"ppt/slides/slide{index}.xml", ppt_slide_xml(slide["title"], slide["lines"], index, slide.get("image")))
+            if slide.get("image"):
+                image = slide["image"]
+                zf.writestr(
+                    f"ppt/slides/_rels/slide{index}.xml.rels",
+                    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                    f'<Relationship Id="rIdImage1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image{index}.{image["ext"]}"/>'
+                    "</Relationships>",
+                )
+                zf.writestr(f"ppt/media/image{index}.{image['ext']}", image["data"])
     return buffer.getvalue()
 
 
