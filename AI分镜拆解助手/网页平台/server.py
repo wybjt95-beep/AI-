@@ -1415,24 +1415,66 @@ def image_prompt_for_shot(shot, payload, index):
 
 
 def image_from_generation_response(response_body):
+    def normalize_image_value(value, key="image"):
+        if not value:
+            return ""
+        if isinstance(value, dict):
+            value = value.get("url") or value.get("b64_json") or value.get("base64") or value.get("image") or value.get("data")
+        if not value:
+            return ""
+        value = str(value)
+        if key == "url" or value.startswith(("data:image", "http://", "https://")):
+            return value
+        return f"data:image/png;base64,{value}"
+
     data = response_body.get("data") if isinstance(response_body, dict) else None
     if isinstance(data, list) and data:
         item = data[0] or {}
-        if item.get("b64_json"):
-            return f"data:image/png;base64,{item['b64_json']}"
-        if item.get("url"):
-            return item["url"]
-        if item.get("image"):
-            image = str(item["image"])
-            return image if image.startswith("data:image") else f"data:image/png;base64,{image}"
-    for key in ("b64_json", "image", "url"):
+        for key in ("b64_json", "base64", "image", "url"):
+            image = normalize_image_value(item.get(key), key)
+            if image:
+                return image
+        image_url = item.get("image_url")
+        image = normalize_image_value(image_url, "url")
+        if image:
+            return image
+    images = response_body.get("images") if isinstance(response_body, dict) else None
+    if isinstance(images, list) and images:
+        item = images[0] or {}
+        for key in ("b64_json", "base64", "image", "url"):
+            image = normalize_image_value(item.get(key), key)
+            if image:
+                return image
+    output = response_body.get("output") if isinstance(response_body, dict) else None
+    if isinstance(output, list):
+        for block in output:
+            content = block.get("content") if isinstance(block, dict) else None
+            if isinstance(content, list):
+                for item in content:
+                    if not isinstance(item, dict):
+                        continue
+                    for key in ("b64_json", "base64", "image", "url", "image_url"):
+                        image = normalize_image_value(item.get(key), key)
+                        if image:
+                            return image
+    for key in ("b64_json", "base64", "image", "image_base64", "url", "result"):
         value = response_body.get(key) if isinstance(response_body, dict) else None
-        if value:
-            value = str(value)
-            if key == "url" or value.startswith("data:image"):
-                return value
-            return f"data:image/png;base64,{value}"
-    raise ValueError("图片模型没有返回可用图片")
+        image = normalize_image_value(value, key)
+        if image:
+            return image
+    keys = ", ".join(response_body.keys()) if isinstance(response_body, dict) else type(response_body).__name__
+    raise ValueError(f"图片模型返回格式无法识别，顶层字段：{keys}")
+
+
+def image_request_variants(image_model, prompt, image_size):
+    variants = []
+    base = {"model": image_model, "prompt": prompt, "n": 1, "size": image_size}
+    variants.append({**base, "response_format": "b64_json"})
+    variants.append(dict(base))
+    if image_size != "1024x1024":
+        variants.append({**base, "size": "1024x1024", "response_format": "b64_json"})
+        variants.append({**base, "size": "1024x1024"})
+    return variants
 
 
 def generate_storyboard_images(payload, user=None):
@@ -1455,34 +1497,34 @@ def generate_storyboard_images(payload, user=None):
         if not isinstance(shot, dict):
             continue
         prompt = image_prompt_for_shot(shot, payload, index)
-        request_body = {
-            "model": image_model,
-            "prompt": prompt,
-            "n": 1,
-            "size": image_size,
-            "response_format": "b64_json",
-        }
-        try:
-            response_body = post_image_generation(api_base, api_key, request_body)
-        except (urllib.error.HTTPError, ApiRequestError) as exc:
-            if getattr(exc, "code", None) not in {400, 422}:
-                raise ValueError(http_error_message(exc)) from exc
-            request_body.pop("response_format", None)
+        errors = []
+        image = ""
+        used_size = image_size
+        for request_body in image_request_variants(image_model, prompt, image_size):
             try:
                 response_body = post_image_generation(api_base, api_key, request_body)
+                image = image_from_generation_response(response_body)
+                used_size = request_body.get("size") or image_size
+                break
             except (urllib.error.HTTPError, ApiRequestError) as retry_exc:
-                if image_size == "1024x1024" or getattr(retry_exc, "code", None) not in {400, 422}:
+                code = getattr(retry_exc, "code", None)
+                message = http_error_message(retry_exc)
+                errors.append(message)
+                if code in {401, 403, 429}:
                     raise ValueError(http_error_message(retry_exc)) from retry_exc
-                request_body["size"] = "1024x1024"
-                try:
-                    response_body = post_image_generation(api_base, api_key, request_body)
-                except (urllib.error.HTTPError, ApiRequestError) as final_exc:
-                    raise ValueError(http_error_message(final_exc)) from final_exc
+            except urllib.error.URLError as retry_exc:
+                errors.append(str(retry_exc.reason if hasattr(retry_exc, "reason") else retry_exc))
+            except ValueError as retry_exc:
+                errors.append(str(retry_exc))
+        if not image:
+            detail = "；".join(errors[-3:]) if errors else "图片模型没有返回可用图片"
+            raise ValueError(f"图片生成失败：{detail}")
         results.append({
             "no": str(shot.get("no") or index + 1).zfill(2),
-            "image": image_from_generation_response(response_body),
+            "image": image,
             "model": image_model,
             "source": "ai-image",
+            "size": used_size,
         })
     if not results:
         raise ValueError("没有生成任何分镜图")

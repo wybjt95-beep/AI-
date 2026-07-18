@@ -1319,7 +1319,7 @@ function renderBoards() {
         ${hasAiImage ? `<img class="frame-image" src="${esc(shot.boardImage)}" alt="${esc(shot.no)} ${esc(shot.type)}" />` : `
           <div class="frame-empty-content">
             <strong>${esc(els.boardStyle.value || "分镜图")}未生成</strong>
-            <span>当前没有使用系统自绘草图。请配置可用图片模型后重新生成。</span>
+            <span>${esc(warning || "当前没有使用系统自绘草图。请配置可用图片模型后重新生成。")}</span>
           </div>
         `}
       </div>
