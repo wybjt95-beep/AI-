@@ -1359,9 +1359,9 @@ def image_prompt_for_shot(shot, payload, index):
     global_notes = str(payload.get("globalNotes") or "").strip()
     ref_meta = shot.get("refMeta") if isinstance(shot.get("refMeta"), dict) else {}
     if board_style == "线稿":
-        style_line = "黑白分镜线稿，清晰线条，少量灰度阴影，广告分镜草图，主体和空间关系必须明确，不要彩色写实渲染。"
+        style_line = "黑白分镜线稿，清晰线条，少量灰度阴影，广告分镜草图，主体和空间关系必须明确；人物可以是简化线稿人物，但不要画成火柴人，不要彩色写实渲染。"
     elif board_style == "火柴人":
-        style_line = "极简火柴人分镜草图，构图清晰，动作关系明确。"
+        style_line = "极简火柴人分镜草图，人物必须由圆形头部、简单线条身体和线条四肢构成，类似导演快速草图；构图清晰，动作关系明确；不要画成线稿插画人物，不要复杂五官、服装褶皱、阴影上色或写实人物。"
     else:
         style_line = "写实广告分镜参考图，realistic cinematic storyboard frame，真实人物比例，自然光影，真实空间透视，电影感构图，不要卡通，不要火柴人，不要线稿，不要矢量图，不要抽象图标。"
     ref_line = ""
@@ -1665,7 +1665,7 @@ def export_shot_rows(payload):
     for shot in payload.get("shots") or []:
         if not isinstance(shot, dict):
             continue
-        board_state = "已生成真实图片" if shot.get("hasBoardImage") else "本地草图/未生成真实图片"
+        board_state = "已生成真实图片" if shot.get("hasBoardImage") else "未生成图片"
         if shot.get("boardSource"):
             board_state += f"；来源：{shot.get('boardSource')}"
         if shot.get("boardModel"):

@@ -1378,6 +1378,36 @@ textarea {
   object-fit: cover;
 }
 
+.frame-empty {
+  display: grid;
+  place-items: center;
+  background:
+    linear-gradient(135deg, transparent 48%, rgba(0,0,0,.08) 49% 51%, transparent 52%),
+    repeating-linear-gradient(135deg, #ffffff 0, #ffffff 14px, #f4f4f4 14px, #f4f4f4 28px);
+}
+
+.frame-empty-content {
+  width: min(78%, 360px);
+  padding: 18px 20px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 14px;
+  background: white;
+  color: var(--ink);
+  text-align: center;
+}
+
+.frame-empty-content strong {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 18px;
+}
+
+.frame-empty-content span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .frame-fallback {
   background:
     linear-gradient(135deg, transparent 48%, rgba(0,0,0,.1) 49% 51%, transparent 52%),

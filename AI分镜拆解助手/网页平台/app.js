@@ -1311,14 +1311,17 @@ function renderBoards() {
   }
   els.boards.innerHTML = confirmed.map((shot, i) => {
     const hasAiImage = Boolean(shot.boardImage);
-    const isFallback = !hasAiImage;
-    const warning = shot.boardWarning || (isFallback ? "没有拿到真实图片，当前展示的是本地草图。请检查分镜图模型配置后重新生成。" : "");
-    const sourceTag = hasAiImage ? "真实生图" : els.boardStyle.value === "火柴人" ? "本地火柴人草图" : "本地草图";
+    const warning = shot.boardWarning || (!hasAiImage ? "图片未生成。请检查图片模型配置后重新点击“生成分镜图”。" : "");
+    const sourceTag = hasAiImage ? "真实生图" : "未生成";
     return `
     <article class="board-card">
-      <div class="frame ${isFallback ? "frame-fallback" : ""}">
-        ${hasAiImage ? `<img class="frame-image" src="${esc(shot.boardImage)}" alt="${esc(shot.no)} ${esc(shot.type)}" />` : boardSvg(shot, i)}
-        ${isFallback ? `<div class="frame-status">真实图片未生成，当前为本地草图</div>` : ""}
+      <div class="frame ${hasAiImage ? "" : "frame-empty"}">
+        ${hasAiImage ? `<img class="frame-image" src="${esc(shot.boardImage)}" alt="${esc(shot.no)} ${esc(shot.type)}" />` : `
+          <div class="frame-empty-content">
+            <strong>${esc(els.boardStyle.value || "分镜图")}未生成</strong>
+            <span>当前没有使用系统自绘草图。请配置可用图片模型后重新生成。</span>
+          </div>
+        `}
       </div>
       <div class="board-info">
         <h4>${esc(shot.no)} ${esc(shot.type)}</h4>
@@ -1498,16 +1501,16 @@ async function generateBoards() {
     const generatedCount = confirmed.filter((shot) => shot.boardImage).length;
     if (!generatedCount) throw new Error("图片模型没有返回可用图片。");
     confirmed.forEach((shot) => {
-      if (!shot.boardImage) shot.boardWarning = "图片模型没有返回这一镜头的图片，已显示本地草图。";
+      if (!shot.boardImage) shot.boardWarning = "图片模型没有返回这一镜头的图片，当前未生成图片。";
     });
-    showToast(generatedCount === confirmed.length ? `已生成 ${generatedCount} 张真实分镜图。` : `已生成 ${generatedCount} 张，未返回的镜头显示本地草图。`);
+    showToast(generatedCount === confirmed.length ? `已生成 ${generatedCount} 张真实分镜图。` : `已生成 ${generatedCount} 张，未返回的镜头标记为未生成。`);
   } catch (error) {
     console.warn(error);
     confirmed.forEach((shot) => {
       shot.boardImage = "";
-      shot.boardWarning = `真实生图失败，已回退本地草图：${error.message || "未知错误"}`;
+      shot.boardWarning = `图片生成失败，未使用系统自绘图：${error.message || "未知错误"}`;
     });
-    showToast("真实生图失败，已回退本地草图。");
+    showToast("图片生成失败，请检查API和图片模型。");
   } finally {
     state.boardsGenerated = true;
     renderBoards();
@@ -1523,7 +1526,7 @@ function changeBoardStyle(style) {
   if (!changed) {
     renderBoards();
     saveCurrentProject();
-    showToast(next === "火柴人" ? "当前已是火柴人草图。" : `当前已是${next}，点击“生成分镜图”重新生成。`);
+    showToast(`当前已是${next}，点击“生成分镜图”重新调用图片模型。`);
     return;
   }
   els.boardStyle.value = next;
