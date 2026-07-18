@@ -13,10 +13,13 @@ import re
 import secrets
 import sqlite3
 import sys
+import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
+import zlib
 from xml.sax.saxutils import escape as xml_escape
 import zipfile
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -30,6 +33,7 @@ DATA_DIR = ROOT / ".data"
 STORE_PATH = DATA_DIR / "store.json"
 DB_PATH = DATA_DIR / "app.db"
 SECRET_PATH = DATA_DIR / "app_secret"
+GENERATED_IMAGE_DIR = DATA_DIR / "generated_images"
 MAX_BODY_BYTES = 25_000_000
 DEFAULT_SESSION_MAX_AGE = 1209600
 CONFIG_KEYS = [
@@ -40,6 +44,9 @@ CONFIG_KEYS = [
     "AI_IMAGE_MODEL",
     "AI_TEMPERATURE",
 ]
+IMAGE_JOB_TTL_SECONDS = 3600
+IMAGE_JOB_LOCK = threading.Lock()
+IMAGE_JOBS = {}
 
 
 class ApiRequestError(Exception):
@@ -86,7 +93,7 @@ def now_ts():
 
 
 def configure_runtime_paths():
-    global DATA_DIR, STORE_PATH, DB_PATH, SECRET_PATH
+    global DATA_DIR, STORE_PATH, DB_PATH, SECRET_PATH, GENERATED_IMAGE_DIR
     configured = env("APP_DATA_DIR")
     DATA_DIR = Path(configured).expanduser() if configured else ROOT / ".data"
     if not DATA_DIR.is_absolute():
@@ -94,10 +101,12 @@ def configure_runtime_paths():
     STORE_PATH = DATA_DIR / "store.json"
     DB_PATH = DATA_DIR / "app.db"
     SECRET_PATH = DATA_DIR / "app_secret"
+    GENERATED_IMAGE_DIR = DATA_DIR / "generated_images"
 
 
 def ensure_data_dir():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
+    GENERATED_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def app_secret():
@@ -622,6 +631,15 @@ def binary_response(handler, status, body, content_type, filename):
     handler.wfile.write(body)
 
 
+def inline_binary_response(handler, status, body, content_type):
+    handler.send_response(status)
+    handler.send_header("Content-Type", content_type)
+    handler.send_header("Content-Length", str(len(body)))
+    handler.send_header("Cache-Control", "private, max-age=3600")
+    handler.end_headers()
+    handler.wfile.write(body)
+
+
 def read_json_body(handler):
     length = int(handler.headers.get("Content-Length") or 0)
     if length <= 0:
@@ -630,6 +648,201 @@ def read_json_body(handler):
         raise ValueError("请求内容过大")
     raw = handler.rfile.read(length)
     return json.loads(raw.decode("utf-8"))
+
+
+def decode_filename(value):
+    text = str(value or "").strip().strip('"')
+    if not text:
+        return ""
+    try:
+        return text.encode("latin1").decode("utf-8")
+    except UnicodeError:
+        return text
+
+
+def parse_content_disposition(value):
+    parts = [part.strip() for part in str(value or "").split(";")]
+    data = {}
+    for part in parts[1:]:
+        if "=" in part:
+            key, item = part.split("=", 1)
+            data[key.strip().lower()] = item.strip().strip('"')
+    if "filename*" in data:
+        encoded = data["filename*"]
+        if "''" in encoded:
+            encoded = encoded.split("''", 1)[1]
+        data["filename"] = urllib.parse.unquote(encoded)
+    elif "filename" in data:
+        data["filename"] = decode_filename(data["filename"])
+    return data
+
+
+def read_multipart_file(handler):
+    content_type = handler.headers.get("Content-Type") or ""
+    match = re.search(r'boundary="?([^";]+)"?', content_type)
+    if "multipart/form-data" not in content_type or not match:
+        raise ValueError("请使用文件上传表单。")
+    length = int(handler.headers.get("Content-Length") or 0)
+    if length <= 0:
+        raise ValueError("没有读取到上传文件。")
+    if length > MAX_BODY_BYTES:
+        raise ValueError("上传文件过大，请控制在 25MB 以内。")
+    body = handler.rfile.read(length)
+    boundary = ("--" + match.group(1)).encode("utf-8")
+    for part in body.split(boundary):
+        part = part.strip(b"\r\n")
+        if not part or part == b"--" or b"\r\n\r\n" not in part:
+            continue
+        raw_headers, data = part.split(b"\r\n\r\n", 1)
+        headers = {}
+        for line in raw_headers.decode("latin1", errors="replace").split("\r\n"):
+            if ":" in line:
+                key, value = line.split(":", 1)
+                headers[key.strip().lower()] = value.strip()
+        disposition = parse_content_disposition(headers.get("content-disposition"))
+        if disposition.get("filename") is not None:
+            filename = disposition.get("filename") or "upload"
+            if data.endswith(b"\r\n"):
+                data = data[:-2]
+            return filename, data, headers.get("content-type") or ""
+    raise ValueError("没有找到上传文件。")
+
+
+def decode_text_bytes(data):
+    for encoding in ("utf-8-sig", "utf-8", "gb18030", "gbk"):
+        try:
+            return data.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return data.decode("utf-8", errors="replace")
+
+
+def clean_import_text(text):
+    lines = []
+    for line in re.sub(r"\r\n?", "\n", str(text or "")).split("\n"):
+        normalized = re.sub(r"[ \t\u00a0]+", " ", line).strip()
+        if normalized:
+            lines.append(normalized)
+    return "\n".join(lines).strip()
+
+
+def extract_docx_text(data):
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        names = [name for name in zf.namelist() if name.startswith("word/") and name.endswith(".xml")]
+        preferred = ["word/document.xml"] + [name for name in names if name != "word/document.xml"]
+        chunks = []
+        for name in preferred:
+            if name not in zf.namelist():
+                continue
+            root = ET.fromstring(zf.read(name))
+            for paragraph in root.iter("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p"):
+                parts = []
+                for node in paragraph.iter():
+                    if node.tag == "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t" and node.text:
+                        parts.append(node.text)
+                    elif node.tag == "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tab":
+                        parts.append(" ")
+                    elif node.tag == "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}br":
+                        parts.append("\n")
+                text = "".join(parts).strip()
+                if text:
+                    chunks.append(text)
+            if chunks and name == "word/document.xml":
+                break
+    return clean_import_text("\n".join(chunks))
+
+
+def xlsx_shared_strings(zf):
+    if "xl/sharedStrings.xml" not in zf.namelist():
+        return []
+    root = ET.fromstring(zf.read("xl/sharedStrings.xml"))
+    values = []
+    for item in root.iter("{http://schemas.openxmlformats.org/spreadsheetml/2006/main}si"):
+        values.append("".join(node.text or "" for node in item.iter("{http://schemas.openxmlformats.org/spreadsheetml/2006/main}t")))
+    return values
+
+
+def extract_xlsx_text(data):
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        shared = xlsx_shared_strings(zf)
+        sheet_names = sorted(name for name in zf.namelist() if re.match(r"xl/worksheets/sheet\d+\.xml$", name))
+        lines = []
+        for sheet in sheet_names:
+            root = ET.fromstring(zf.read(sheet))
+            for row in root.iter("{http://schemas.openxmlformats.org/spreadsheetml/2006/main}row"):
+                cells = []
+                for cell in row.iter("{http://schemas.openxmlformats.org/spreadsheetml/2006/main}c"):
+                    cell_type = cell.attrib.get("t")
+                    value = ""
+                    if cell_type == "inlineStr":
+                        value = "".join(node.text or "" for node in cell.iter("{http://schemas.openxmlformats.org/spreadsheetml/2006/main}t"))
+                    else:
+                        node = cell.find("{http://schemas.openxmlformats.org/spreadsheetml/2006/main}v")
+                        if node is not None and node.text is not None:
+                            value = node.text
+                            if cell_type == "s":
+                                try:
+                                    value = shared[int(value)]
+                                except (ValueError, IndexError):
+                                    pass
+                    if str(value).strip():
+                        cells.append(str(value).strip())
+                if cells:
+                    lines.append(" ".join(cells))
+    return clean_import_text("\n".join(lines))
+
+
+def decode_pdf_literal(raw):
+    text = raw.decode("latin1", errors="ignore")
+    text = text.replace(r"\(", "(").replace(r"\)", ")").replace(r"\\", "\\")
+    text = re.sub(r"\\[nrtbf]", " ", text)
+    text = re.sub(r"\\\d{1,3}", " ", text)
+    return text
+
+
+def extract_pdf_text(data):
+    chunks = []
+    sources = [data]
+    for match in re.finditer(rb"stream\r?\n(.*?)\r?\nendstream", data, re.S):
+        raw = match.group(1).strip()
+        try:
+            sources.append(zlib.decompress(raw))
+        except zlib.error:
+            continue
+    for source in sources:
+        for literal in re.findall(rb"\((?:\\.|[^\\)]){2,}\)", source):
+            chunks.append(decode_pdf_literal(literal[1:-1]))
+        for hex_text in re.findall(rb"<([0-9A-Fa-f\s]{8,})>", source):
+            try:
+                raw = bytes.fromhex(re.sub(rb"\s+", b"", hex_text).decode("ascii"))
+                chunks.append(raw.decode("utf-16-be", errors="ignore") or raw.decode("utf-8", errors="ignore"))
+            except Exception:
+                continue
+    text = clean_import_text("\n".join(chunks))
+    text = re.sub(r"[\x00-\x08\x0b-\x1f]+", "", text)
+    return text
+
+
+def extract_uploaded_script(filename, data, content_type=""):
+    suffix = Path(filename or "").suffix.lower()
+    if suffix in {".txt", ".md", ".csv"} or (content_type or "").startswith("text/"):
+        text = decode_text_bytes(data)
+    elif suffix == ".docx":
+        text = extract_docx_text(data)
+    elif suffix == ".xlsx":
+        text = extract_xlsx_text(data)
+    elif suffix == ".pdf":
+        text = extract_pdf_text(data)
+    elif suffix in {".doc", ".xls"}:
+        raise ValueError("暂不支持旧版 .doc/.xls 文件，请另存为 .docx/.xlsx 或复制文字后导入。")
+    else:
+        raise ValueError("暂不支持该文件格式，请上传 TXT、MD、CSV、DOCX、XLSX 或文本型 PDF。")
+    text = clean_import_text(text)
+    if not text:
+        raise ValueError("没有从文件中读取到可用文字。PDF 如果是扫描图片版，需要先 OCR 或复制文字后导入。")
+    if len(text) > 20000:
+        text = text[:20000].rstrip() + "\n（文件内容较长，已截取前 20000 字用于脚本导入。）"
+    return text
 
 
 def unique(items):
@@ -1466,6 +1679,60 @@ def image_from_generation_response(response_body):
     raise ValueError(f"图片模型返回格式无法识别，顶层字段：{keys}")
 
 
+def parse_image_bytes(value):
+    text = str(value or "").strip()
+    if not text:
+        return None
+    match = re.match(r"^data:(image/[a-zA-Z0-9.+-]+);base64,(.+)$", text, re.S)
+    if match:
+        mime = match.group(1).lower()
+        raw = re.sub(r"\s+", "", match.group(2))
+        data = base64.b64decode(raw, validate=True)
+    elif text.startswith(("http://", "https://")):
+        request = urllib.request.Request(text, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(request, timeout=90) as response:
+            data = response.read(12_000_000)
+            mime = (response.headers.get("Content-Type") or mimetypes.guess_type(text)[0] or "").split(";")[0].lower()
+    else:
+        return None
+    ext_map = {
+        "image/png": "png",
+        "image/jpeg": "jpg",
+        "image/jpg": "jpg",
+        "image/webp": "webp",
+    }
+    ext = ext_map.get(mime)
+    if not ext or not data:
+        return None
+    return {"mime": "image/jpeg" if ext == "jpg" else mime, "ext": ext, "data": data}
+
+
+def image_file_name(job_id, shot_no, ext):
+    safe_job = re.sub(r"[^a-zA-Z0-9_-]", "", str(job_id or "job"))[:80]
+    safe_no = re.sub(r"[^a-zA-Z0-9_-]", "", str(shot_no or "shot"))[:20]
+    return f"{safe_job}_{safe_no}_{secrets.token_hex(8)}.{ext}"
+
+
+def image_file_path(filename):
+    safe_name = Path(str(filename or "")).name
+    return GENERATED_IMAGE_DIR / safe_name
+
+
+def store_temp_storyboard_image(value, job_id, shot_no):
+    parsed = parse_image_bytes(value)
+    if not parsed:
+        raise ValueError("图片模型已返回结果，但无法读取图片数据。")
+    ensure_data_dir()
+    filename = image_file_name(job_id, shot_no, parsed["ext"])
+    image_file_path(filename).write_bytes(parsed["data"])
+    return {
+        "url": f"/api/storyboard/image-files/{urllib.parse.quote(filename)}",
+        "mime": parsed["mime"],
+        "ext": parsed["ext"],
+        "bytes": len(parsed["data"]),
+    }
+
+
 def image_request_variants(image_model, prompt, image_size):
     variants = []
     base = {"model": image_model, "prompt": prompt, "n": 1, "size": image_size}
@@ -1477,7 +1744,7 @@ def image_request_variants(image_model, prompt, image_size):
     return variants
 
 
-def generate_storyboard_images(payload, user=None):
+def generate_storyboard_images(payload, user=None, job_id=None):
     api_config = user_api_config(user) if user else {"provider": "mock"}
     provider = (api_config.get("provider") or "mock").lower()
     api_base = (api_config.get("apiBaseUrl") or "").rstrip("/")
@@ -1519,8 +1786,12 @@ def generate_storyboard_images(payload, user=None):
         if not image:
             detail = "；".join(errors[-3:]) if errors else "图片模型没有返回可用图片"
             raise ValueError(f"图片生成失败：{detail}")
+        shot_no = str(shot.get("no") or index + 1).zfill(2)
+        if job_id:
+            stored = store_temp_storyboard_image(image, job_id, shot_no)
+            image = stored["url"]
         results.append({
-            "no": str(shot.get("no") or index + 1).zfill(2),
+            "no": shot_no,
             "image": image,
             "model": image_model,
             "source": "ai-image",
@@ -1529,6 +1800,97 @@ def generate_storyboard_images(payload, user=None):
     if not results:
         raise ValueError("没有生成任何分镜图")
     return {"source": "ai-image", "model": image_model, "images": results}
+
+
+def prune_image_jobs():
+    current = now_ts()
+    cutoff = current - IMAGE_JOB_TTL_SECONDS
+    with IMAGE_JOB_LOCK:
+        stale_ids = [
+            job_id
+            for job_id, job in IMAGE_JOBS.items()
+            if int(job.get("updatedAt") or job.get("createdAt") or 0) < cutoff
+        ]
+        for job_id in stale_ids:
+            IMAGE_JOBS.pop(job_id, None)
+    if GENERATED_IMAGE_DIR.exists():
+        for path in GENERATED_IMAGE_DIR.iterdir():
+            try:
+                if path.is_file() and int(path.stat().st_mtime) < cutoff:
+                    path.unlink()
+            except OSError:
+                continue
+
+
+def public_image_job(job):
+    return {
+        "jobId": job.get("id"),
+        "status": job.get("status"),
+        "createdAt": job.get("createdAt"),
+        "updatedAt": job.get("updatedAt"),
+        "result": job.get("result"),
+        "error": job.get("error") or "",
+    }
+
+
+def run_image_job(job_id, payload, user_snapshot):
+    with IMAGE_JOB_LOCK:
+        job = IMAGE_JOBS.get(job_id)
+        if job:
+            job["status"] = "running"
+            job["updatedAt"] = now_ts()
+    try:
+        result = generate_storyboard_images(payload, user_snapshot, job_id)
+        with IMAGE_JOB_LOCK:
+            job = IMAGE_JOBS.get(job_id)
+            if job:
+                job["status"] = "done"
+                job["result"] = result
+                job["error"] = ""
+                job["updatedAt"] = now_ts()
+    except Exception as exc:
+        with IMAGE_JOB_LOCK:
+            job = IMAGE_JOBS.get(job_id)
+            if job:
+                job["status"] = "failed"
+                job["result"] = None
+                job["error"] = str(exc)
+                job["updatedAt"] = now_ts()
+
+
+def start_image_job(payload, user):
+    prune_image_jobs()
+    job_id = f"img-{secrets.token_urlsafe(16)}"
+    user_snapshot = {
+        "id": user.get("id"),
+        "apiConfig": dict(user.get("apiConfig") or {}),
+    }
+    now = now_ts()
+    job = {
+        "id": job_id,
+        "userId": user.get("id"),
+        "status": "queued",
+        "createdAt": now,
+        "updatedAt": now,
+        "result": None,
+        "error": "",
+    }
+    with IMAGE_JOB_LOCK:
+        IMAGE_JOBS[job_id] = job
+    thread = threading.Thread(target=run_image_job, args=(job_id, payload, user_snapshot), daemon=True)
+    thread.start()
+    return public_image_job(job)
+
+
+def get_image_job(job_id, user):
+    prune_image_jobs()
+    with IMAGE_JOB_LOCK:
+        job = IMAGE_JOBS.get(str(job_id or ""))
+        if not job:
+            raise ValueError("生图任务不存在或已过期，请重新生成。")
+        if job.get("userId") != user.get("id"):
+            raise PermissionError("无权查看该生图任务。")
+        return public_image_job(job)
 
 
 def normalize_analysis(raw_analysis):
@@ -1740,28 +2102,39 @@ def export_shot_rows(payload):
 
 def parse_export_image(value):
     text = str(value or "").strip()
-    match = re.match(r"^data:(image/[a-zA-Z0-9.+-]+);base64,(.+)$", text, re.S)
-    if match:
-        mime = match.group(1).lower()
-        raw = re.sub(r"\s+", "", match.group(2))
+    if text.startswith("/api/storyboard/image-files/"):
+        filename = urllib.parse.unquote(text.rsplit("/", 1)[-1])
+        path = image_file_path(filename)
+        if not path.exists() or not path.is_file():
+            return None
         try:
-            data = base64.b64decode(raw, validate=True)
+            data = path.read_bytes()
         except Exception:
             return None
+        mime = (mimetypes.guess_type(path.name)[0] or "").split(";")[0].lower()
     elif text.startswith(("http://", "https://")):
         try:
-            request = urllib.request.Request(text, headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(request, timeout=20) as response:
-                data = response.read(8_000_000)
-                mime = (response.headers.get("Content-Type") or mimetypes.guess_type(text)[0] or "").split(";")[0].lower()
+            parsed = parse_image_bytes(text)
+            if not parsed:
+                return None
+            data = parsed["data"]
+            mime = parsed["mime"]
         except Exception:
             return None
     else:
-        return None
+        try:
+            parsed = parse_image_bytes(text)
+            if not parsed:
+                return None
+            data = parsed["data"]
+            mime = parsed["mime"]
+        except Exception:
+            return None
     ext_map = {
         "image/png": "png",
         "image/jpeg": "jpg",
         "image/jpg": "jpg",
+        "image/webp": "webp",
     }
     ext = ext_map.get(mime)
     if not ext or not data:
@@ -2069,6 +2442,8 @@ def build_docx(payload):
         image_defaults += '<Default Extension="png" ContentType="image/png"/>'
     if any(image["ext"] == "jpg" for image in board_images):
         image_defaults += '<Default Extension="jpg" ContentType="image/jpeg"/>'
+    if any(image["ext"] == "webp" for image in board_images):
+        image_defaults += '<Default Extension="webp" ContentType="image/webp"/>'
     image_rels = "".join(
         f'<Relationship Id="rIdImage{i}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image{i}.{image["ext"]}"/>'
         for i, image in enumerate(board_images, 1)
@@ -2246,6 +2621,8 @@ def build_pptx(payload):
         image_defaults += '<Default Extension="png" ContentType="image/png"/>'
     if any(image["ext"] == "jpg" for image in board_images):
         image_defaults += '<Default Extension="jpg" ContentType="image/jpeg"/>'
+    if any(image["ext"] == "webp" for image in board_images):
+        image_defaults += '<Default Extension="webp" ContentType="image/webp"/>'
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr(
@@ -2436,6 +2813,28 @@ class StoryboardHandler(SimpleHTTPRequestHandler):
                 return json_response(self, 200, {"projects": user_projects(store, user["id"])})
             except PermissionError as exc:
                 return json_response(self, 401, {"error": str(exc), "projects": []})
+        if path == "/api/storyboard/images/jobs":
+            try:
+                user, _ = require_user(self)
+                job_id = urllib.parse.parse_qs(parsed.query).get("id", [""])[0]
+                if not job_id:
+                    return json_response(self, 400, {"error": "缺少生图任务 ID"})
+                return json_response(self, 200, get_image_job(job_id, user))
+            except PermissionError as exc:
+                return json_response(self, 401, {"error": str(exc)})
+            except ValueError as exc:
+                return json_response(self, 404, {"error": str(exc)})
+        if path.startswith("/api/storyboard/image-files/"):
+            try:
+                require_user(self)
+                filename = urllib.parse.unquote(path.rsplit("/", 1)[-1])
+                image_path = image_file_path(filename)
+                if not image_path.exists() or not image_path.is_file():
+                    return json_response(self, 404, {"error": "图片文件不存在或已过期"})
+                content_type = mimetypes.guess_type(image_path.name)[0] or "application/octet-stream"
+                return inline_binary_response(self, 200, image_path.read_bytes(), content_type)
+            except PermissionError as exc:
+                return json_response(self, 401, {"error": str(exc)})
         return super().do_GET()
 
     def do_POST(self):
@@ -2492,6 +2891,18 @@ class StoryboardHandler(SimpleHTTPRequestHandler):
                 return json_response(self, 400, {"error": str(exc)})
             except Exception as exc:
                 return json_response(self, 500, {"error": f"文件导出失败：{exc}"})
+        if path == "/api/script/import":
+            try:
+                require_user(self)
+                filename, data, content_type = read_multipart_file(self)
+                text = extract_uploaded_script(filename, data, content_type)
+                return json_response(self, 200, {"filename": filename, "text": text, "length": len(text)})
+            except PermissionError as exc:
+                return json_response(self, 401, {"error": str(exc)})
+            except ValueError as exc:
+                return json_response(self, 400, {"error": str(exc)})
+            except Exception as exc:
+                return json_response(self, 500, {"error": f"文件读取失败：{exc}"})
         if path == "/api/script/analyze":
             try:
                 user, _ = require_user(self)
@@ -2510,7 +2921,7 @@ class StoryboardHandler(SimpleHTTPRequestHandler):
             try:
                 user, _ = require_user(self)
                 payload = read_json_body(self)
-                return json_response(self, 200, generate_storyboard_images(payload, user))
+                return json_response(self, 202, start_image_job(payload, user))
             except PermissionError as exc:
                 return json_response(self, 401, {"error": str(exc)})
             except (ValueError, json.JSONDecodeError) as exc:

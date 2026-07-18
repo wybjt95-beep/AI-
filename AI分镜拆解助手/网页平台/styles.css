@@ -1840,7 +1840,7 @@ dialog::backdrop {
 }
 
 .script-tools {
-  grid-template-columns: 160px minmax(260px, 1fr) 210px;
+  grid-template-columns: minmax(260px, 1fr) 210px;
   gap: 14px;
 }
 
@@ -1880,6 +1880,11 @@ dialog::backdrop {
   gap: 14px;
   align-items: end;
   margin-top: 18px;
+  flex-wrap: wrap;
+}
+
+.shot-target-control {
+  width: min(240px, 100%);
 }
 
 .image-generate-bar label {

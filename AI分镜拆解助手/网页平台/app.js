@@ -58,6 +58,10 @@ function showToast(text) {
   setTimeout(() => els.toast.classList.remove("show"), 2200);
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function canUseBackend() {
   return window.location.protocol !== "file:";
 }
@@ -98,6 +102,35 @@ function requestedShotCount() {
   const value = Number(els.shotTarget?.value || "");
   if (!Number.isFinite(value) || value <= 0) return 0;
   return Math.min(24, Math.max(1, Math.round(value)));
+}
+
+function suggestShotCount() {
+  const script = els.scriptInput.value.trim();
+  const units = scriptUnits(script, 24);
+  const duration = readProjectDuration();
+  const entityCount = ["people", "locations", "props", "product"].reduce((sum, key) => sum + (state.detected[key] || []).length, 0);
+  let min = 4;
+  let max = 6;
+  if (duration <= 10) {
+    min = 3; max = 5;
+  } else if (duration <= 15) {
+    min = 4; max = 6;
+  } else if (duration <= 30) {
+    min = 6; max = 8;
+  } else if (duration <= 60) {
+    min = 8; max = 12;
+  } else {
+    min = 10; max = 16;
+  }
+  const densityBonus = entityCount >= 8 ? 2 : entityCount >= 5 ? 1 : 0;
+  const unitBased = Math.max(units.length, Math.round(duration / 5));
+  return Math.min(24, Math.max(min, Math.min(max + densityBonus, unitBased + densityBonus)));
+}
+
+function applySuggestedShotCount() {
+  const count = suggestShotCount();
+  if (els.shotTarget) els.shotTarget.value = count;
+  return count;
 }
 
 function normalizeCreativityValue(value, scale = 100) {
@@ -812,6 +845,20 @@ async function requestStoryboardSplit() {
   return data;
 }
 
+async function requestScriptImport(file) {
+  if (!canUseBackend()) throw new Error("当前是 file 打开方式，无法连接后端接口。");
+  const form = new FormData();
+  form.append("file", file);
+  const response = await fetch("/api/script/import", { method: "POST", body: form });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(data.error || "文件读取失败。");
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+
 function generatedTagValue(data, keys, max = 3) {
   for (const key of keys) {
     const value = data?.[key];
@@ -1319,7 +1366,7 @@ function renderBoards() {
         ${hasAiImage ? `<img class="frame-image" src="${esc(shot.boardImage)}" alt="${esc(shot.no)} ${esc(shot.type)}" />` : `
           <div class="frame-empty-content">
             <strong>${esc(els.boardStyle.value || "分镜图")}未生成</strong>
-            <span>${esc(warning || "当前没有使用系统自绘草图。请配置可用图片模型后重新生成。")}</span>
+            <span>${esc(warning || "当前没有拿到图片模型返回结果，请检查模型配置后重新生成。")}</span>
           </div>
         `}
       </div>
@@ -1470,7 +1517,22 @@ async function requestStoryboardImages(confirmed) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || "图片生成接口请求失败。");
-  return data;
+  if (data.images) return data;
+  if (!data.jobId) throw new Error("图片生成任务创建失败。");
+  return pollStoryboardImageJob(data.jobId);
+}
+
+async function pollStoryboardImageJob(jobId) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < 10 * 60 * 1000) {
+    await sleep(2000);
+    const response = await fetch(`/api/storyboard/images/jobs?id=${encodeURIComponent(jobId)}`);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "图片生成任务查询失败。");
+    if (data.status === "done") return data.result || {};
+    if (data.status === "failed") throw new Error(data.error || "图片生成任务失败。");
+  }
+  throw new Error("图片生成等待超时，请稍后重试。");
 }
 
 async function generateBoards() {
@@ -1508,7 +1570,7 @@ async function generateBoards() {
     console.warn(error);
     confirmed.forEach((shot) => {
       shot.boardImage = "";
-      shot.boardWarning = `图片生成失败，未使用系统自绘图：${error.message || "未知错误"}`;
+      shot.boardWarning = `图片生成失败：${error.message || "未知错误"}`;
     });
     showToast("图片生成失败，请检查API和图片模型。");
   } finally {
@@ -1563,8 +1625,9 @@ async function analyzeScript() {
   try {
     const data = await requestScriptAnalysis();
     state.detected = normalizeAnalysisData(data.analysis);
-    if (data.warning) showToast(data.warning);
-    else showToast(data.source === "ai" ? "AI 已完成剧本分析，可先修改再拆解分镜。" : "已使用后端演示模式分析剧本。");
+    const count = applySuggestedShotCount();
+    if (data.warning) showToast(`${data.warning} 已建议拆成 ${count} 个镜头。`);
+    else showToast(data.source === "ai" ? `AI 已完成剧本分析，建议拆成 ${count} 个镜头，可修改后再拆解。` : `已使用后端演示模式分析剧本，建议拆成 ${count} 个镜头。`);
   } catch (error) {
     console.warn(error);
     if (isAuthError(error)) {
@@ -1578,7 +1641,8 @@ async function analyzeScript() {
       return;
     }
     state.detected = detectTerms(script);
-    showToast("后端未连接，已使用前端本地分析。");
+    const count = applySuggestedShotCount();
+    showToast(`后端未连接，已使用前端本地分析，建议拆成 ${count} 个镜头。`);
   }
   renderAnalysis();
   renderSummary();
@@ -1763,12 +1827,30 @@ function bindEvents() {
   els.fileInput.addEventListener("change", async () => {
     const file = els.fileInput.files?.[0];
     if (!file) return;
-    if (/\.(txt|md|csv)$/i.test(file.name)) {
-      els.scriptInput.value = (await file.text()).trim();
-      els.fileStatus.textContent = `已读取 ${file.name}`;
+    els.fileStatus.textContent = `正在读取 ${file.name}...`;
+    try {
+      const data = await requestScriptImport(file);
+      els.scriptInput.value = String(data.text || "").trim();
+      state.detected = emptyDetected();
+      state.shots = [];
+      state.boardsGenerated = false;
+      els.shotTarget.value = "";
+      renderAnalysis();
+      renderShots();
+      renderBoards();
+      els.fileStatus.textContent = `已读取 ${data.filename || file.name}，共 ${data.length || els.scriptInput.value.length} 字。`;
+      showToast("脚本文件已导入。");
       scheduleAutoSave();
-    } else {
-      els.fileStatus.textContent = `已选择 ${file.name}。静态演示版保留入口，真实版接后端解析。`;
+    } catch (error) {
+      console.warn(error);
+      if (/\.(txt|md|csv)$/i.test(file.name)) {
+        els.scriptInput.value = (await file.text()).trim();
+        els.fileStatus.textContent = `已本地读取 ${file.name}。`;
+        scheduleAutoSave();
+        return;
+      }
+      els.fileStatus.textContent = `读取失败：${error.message || "无法解析该文件"}`;
+      showToast(error.message || "文件读取失败。");
     }
   });
   els.scriptInput.addEventListener("input", scheduleAutoSave);

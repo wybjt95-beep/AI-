@@ -257,7 +257,7 @@
               </div>
               <div class="upload hidden" id="uploadBox">
                 <input id="fileInput" type="file" accept=".txt,.md,.csv,.doc,.docx,.pdf,.xls,.xlsx" />
-                <p id="fileStatus">静态演示版可读取 TXT/MD/CSV，Word/PDF/Excel 保留上传入口。</p>
+                <p id="fileStatus">支持 TXT/MD/CSV/DOCX/XLSX/文本型 PDF；旧版 DOC/XLS 请另存为新版格式后上传。</p>
               </div>
               <div class="script-input-grid">
                 <label class="field script-field">
@@ -270,7 +270,6 @@
                 </label>
               </div>
               <div class="script-tools">
-                <label><span>镜头数量</span><input id="shotTarget" type="number" min="1" max="24" placeholder="留空由系统判断" /></label>
                 <label class="creativity-control"><span>创意强度 <output id="creativityValue">60</output></span><input id="creativity" type="range" min="0" max="100" step="1" value="60" /><small id="creativityText">当前：60/100 · 平衡发挥</small></label>
                 <button class="primary" id="analyze">下一步：剧本分析</button>
               </div>
@@ -283,6 +282,7 @@
               <p class="hint">人物、场景、道具、产品可能有多个；台词和旁白可决定是否带入分镜。</p>
               <div class="analysis-grid" id="analysisGrid"><div class="empty">导入脚本后点击剧本分析。</div></div>
               <div class="panel-actions-bottom">
+                <label class="shot-target-control"><span>建议镜头数量</span><input id="shotTarget" type="number" min="1" max="24" placeholder="剧本分析后自动建议，可修改" /></label>
                 <button class="primary" id="split">确认分析并拆解分镜</button>
               </div>
             </section>
