@@ -256,7 +256,7 @@ function writeSavedProjects(projects) {
     localStorage.setItem(projectStorageKey(), JSON.stringify(projects.slice(0, 30)));
   } catch (error) {
     console.warn(error);
-    showToast("本地保存空间不足：参考图过大可能导致刷新后丢失，但不影响当前页面继续生成分镜图。");
+    showToast("本地保存空间不足：图片只用于当前页面和导出，不写入项目存储。");
   }
 }
 
@@ -285,6 +285,7 @@ function projectSnapshot() {
   const overallVisualStyle = tagText(els.visualStyle.value, 3);
   const savedShots = state.shots.map((shot) => ({
     ...shot,
+    refData: "",
     boardImage: "",
     boardWarning: shot.boardWarning || "",
     boardSource: shot.boardSource || "",

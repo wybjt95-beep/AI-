@@ -1761,7 +1761,11 @@ def xlsx_cell(row_index, col_index, value, style=None):
 
 def xlsx_sheet_xml(rows, freeze_header=False, drawing_rel_id=None, row_heights=None):
     max_cols = max((len(row) for row in rows), default=1)
-    cols = "".join(f'<col min="{i}" max="{i}" width="18" customWidth="1"/>' for i in range(1, max_cols + 1))
+    default_widths = [14, 18, 42, 14, 14, 14, 12, 18, 18, 18, 18, 12, 24, 24, 34, 12, 18, 24, 34]
+    cols = "".join(
+        f'<col min="{i}" max="{i}" width="{default_widths[i - 1] if i <= len(default_widths) else 18}" customWidth="1"/>'
+        for i in range(1, max_cols + 1)
+    )
     sheet_view = '<sheetViews><sheetView workbookViewId="0">'
     if freeze_header:
         sheet_view += '<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>'
@@ -1879,11 +1883,11 @@ def build_xlsx(payload):
             "xl/styles.xml",
             '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-            '<fonts count="2"><font><sz val="11"/><name val="Microsoft YaHei"/></font><font><b/><sz val="11"/><name val="Microsoft YaHei"/></font></fonts>'
-            '<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFEFEFEF"/><bgColor indexed="64"/></patternFill></fill></fills>'
-            '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
+            '<fonts count="2"><font><sz val="11"/><name val="Microsoft YaHei"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Microsoft YaHei"/></font></fonts>'
+            '<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF111111"/><bgColor indexed="64"/></patternFill></fill></fills>'
+            '<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFD9DDE5"/></left><right style="thin"><color rgb="FFD9DDE5"/></right><top style="thin"><color rgb="FFD9DDE5"/></top><bottom style="thin"><color rgb="FFD9DDE5"/></bottom><diagonal/></border></borders>'
             '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
-            '<cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="1" borderId="0" xfId="0" applyFont="1" applyFill="1"/></cellXfs>'
+            '<cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"><alignment vertical="top" wrapText="1"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf></cellXfs>'
             "</styleSheet>",
         )
         for index, (_, rows) in enumerate(sheets, 1):
@@ -1953,9 +1957,10 @@ def docx_table(rows):
     for row_index, row in enumerate(rows):
         cells = []
         for value in row:
-            bold = "<w:rPr><w:b/></w:rPr>" if row_index == 0 else ""
+            tc_style = '<w:shd w:fill="111111"/>' if row_index == 0 else '<w:shd w:fill="FFFFFF"/>'
+            bold = '<w:rPr><w:b/><w:color w:val="FFFFFF"/></w:rPr>' if row_index == 0 else '<w:rPr><w:color w:val="222222"/></w:rPr>'
             cells.append(
-                "<w:tc><w:tcPr><w:tcW w:w=\"2400\" w:type=\"dxa\"/></w:tcPr>"
+                f"<w:tc><w:tcPr><w:tcW w:w=\"2400\" w:type=\"dxa\"/>{tc_style}</w:tcPr>"
                 f"<w:p><w:r>{bold}{docx_text_run(value)}</w:r></w:p></w:tc>"
             )
         row_xml.append(f"<w:tr>{''.join(cells)}</w:tr>")
@@ -2011,10 +2016,10 @@ def build_docx(payload):
     styles_xml = (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
-        '<w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:rPr><w:b/><w:sz w:val="40"/></w:rPr></w:style>'
-        '<w:style w:type="paragraph" w:styleId="Subtitle"><w:name w:val="Subtitle"/><w:rPr><w:color w:val="666666"/><w:sz w:val="24"/></w:rPr></w:style>'
-        '<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="Heading 1"/><w:rPr><w:b/><w:sz w:val="28"/></w:rPr></w:style>'
-        '<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="Heading 2"/><w:rPr><w:b/><w:sz w:val="24"/></w:rPr></w:style>'
+        '<w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:pPr><w:spacing w:after="160"/></w:pPr><w:rPr><w:b/><w:color w:val="111111"/><w:sz w:val="42"/></w:rPr></w:style>'
+        '<w:style w:type="paragraph" w:styleId="Subtitle"><w:name w:val="Subtitle"/><w:pPr><w:spacing w:after="220"/></w:pPr><w:rPr><w:color w:val="666666"/><w:sz w:val="22"/></w:rPr></w:style>'
+        '<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="Heading 1"/><w:pPr><w:spacing w:before="240" w:after="120"/><w:pBdr><w:bottom w:val="single" w:sz="8" w:space="4" w:color="111111"/></w:pBdr></w:pPr><w:rPr><w:b/><w:color w:val="111111"/><w:sz w:val="28"/></w:rPr></w:style>'
+        '<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="Heading 2"/><w:pPr><w:spacing w:before="180" w:after="80"/></w:pPr><w:rPr><w:b/><w:color w:val="333333"/><w:sz w:val="23"/></w:rPr></w:style>'
         "</w:styles>"
     )
     image_defaults = ""
@@ -2060,11 +2065,12 @@ def build_docx(payload):
     return buffer.getvalue()
 
 
-def ppt_paragraph(text, font_size=2200, bold=False):
+def ppt_paragraph(text, font_size=2200, bold=False, color="222222"):
     bold_attr = ' b="1"' if bold else ""
     return (
         "<a:p><a:r>"
-        f'<a:rPr lang="zh-CN" sz="{font_size}"{bold_attr}/>'
+        f'<a:rPr lang="zh-CN" sz="{font_size}"{bold_attr}>'
+        f'<a:solidFill><a:srgbClr val="{color}"/></a:solidFill></a:rPr>'
         f"<a:t>{xml_clean(text)}</a:t>"
         "</a:r></a:p>"
     )
@@ -2091,10 +2097,22 @@ def ppt_picture(shape_id, rel_id, x, y, cx, cy, name):
     )
 
 
+def ppt_rule(shape_id, x, y, cx, color="111111"):
+    return (
+        "<p:sp>"
+        f'<p:nvSpPr><p:cNvPr id="{shape_id}" name="Rule {shape_id}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>'
+        f'<p:spPr><a:xfrm><a:off x="{x}" y="{y}"/><a:ext cx="{cx}" cy="0"/></a:xfrm>'
+        '<a:prstGeom prst="line"><a:avLst/></a:prstGeom>'
+        f'<a:ln w="19050"><a:solidFill><a:srgbClr val="{color}"/></a:solidFill></a:ln></p:spPr>'
+        "</p:sp>"
+    )
+
+
 def ppt_slide_xml(title, lines, slide_index, image=None):
     text_width = 10800000 if not image else 4700000
     shapes = [
-        ppt_text_box(2, 620000, 420000, 10500000, 900000, [ppt_paragraph(title, 3200, True)]),
+        ppt_text_box(2, 620000, 420000, 10500000, 900000, [ppt_paragraph(title, 3200, True, "111111")]),
+        ppt_rule(5, 660000, 1240000, 2100000),
         ppt_text_box(3, 660000, 1420000, text_width, 4800000, [ppt_paragraph(line, 1900, False) for line in lines]),
     ]
     if image:
