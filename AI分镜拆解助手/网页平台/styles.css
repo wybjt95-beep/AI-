@@ -1291,10 +1291,26 @@ textarea {
 
 .reference-input { display: none; }
 
+.reference-actions {
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+}
+
 .mini {
   min-height: 36px;
   border-radius: 12px;
   background: white;
+}
+
+.danger-mini {
+  border-color: #a23b30;
+  color: #a23b30;
+}
+
+.danger-mini:hover {
+  color: white;
+  background: #a23b30;
 }
 
 .shot-side {

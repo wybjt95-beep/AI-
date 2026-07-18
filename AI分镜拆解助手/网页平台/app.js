@@ -256,7 +256,7 @@ function writeSavedProjects(projects) {
     localStorage.setItem(projectStorageKey(), JSON.stringify(projects.slice(0, 30)));
   } catch (error) {
     console.warn(error);
-    showToast("本地保存空间不足，参考图过大时可先不保存图片。");
+    showToast("本地保存空间不足：参考图过大可能导致刷新后丢失，但不影响当前页面继续生成分镜图。");
   }
 }
 
@@ -283,6 +283,13 @@ function hasProjectContent() {
 function projectSnapshot() {
   const overallColorTone = tagText(els.tone.value, 3);
   const overallVisualStyle = tagText(els.visualStyle.value, 3);
+  const savedShots = state.shots.map((shot) => ({
+    ...shot,
+    boardImage: "",
+    boardWarning: shot.boardWarning || "",
+    boardSource: shot.boardSource || "",
+    boardModel: shot.boardModel || "",
+  }));
   return {
     id: state.projectId || newProjectId(),
     updatedAt: new Date().toISOString(),
@@ -293,7 +300,7 @@ function projectSnapshot() {
     detected: normalizeAnalysisData(state.detected),
     includeDialogue: true,
     includeNarration: true,
-    shots: state.shots,
+    shots: savedShots,
     boardsGenerated: state.boardsGenerated,
     boardStyle: els.boardStyle.value,
     tone: overallColorTone,
@@ -1020,10 +1027,11 @@ function multi(field, value, label, options) {
 
 function referenceRow(shot, index) {
   const preview = shot.refData ? `<img class="reference-thumb" src="${shot.refData}" alt="${esc(shot.refName)}" />` : `<div class="reference-empty">未上传</div>`;
+  const removeButton = shot.refData ? `<button class="mini danger-mini" type="button" data-action="remove-ref">删除参考图</button>` : "";
   return `<div class="reference-row">
     ${preview}
     <div class="reference-meta"><strong>分镜参考图</strong><span>${shot.refName ? `已上传：${esc(shot.refName)}` : "可选上传线稿、截图或参考图，辅助生成这一镜头的分镜图。"}</span></div>
-    <div><input class="reference-input" id="ref-${index}" type="file" accept="image/*" data-ref="${index}" /><label class="mini" for="ref-${index}">上传图片</label></div>
+    <div class="reference-actions"><input class="reference-input" id="ref-${index}" type="file" accept="image/*" data-ref="${index}" /><label class="mini" for="ref-${index}">${shot.refData ? "替换图片" : "上传图片"}</label>${removeButton}</div>
   </div>`;
 }
 
@@ -1276,12 +1284,11 @@ function renderBoards() {
     renderSummary();
     return;
   }
-  const useLocalSketch = els.boardStyle.value === "火柴人";
   els.boards.innerHTML = confirmed.map((shot, i) => {
-    const hasAiImage = Boolean(shot.boardImage && !useLocalSketch);
-    const isFallback = !hasAiImage && !useLocalSketch;
+    const hasAiImage = Boolean(shot.boardImage);
+    const isFallback = !hasAiImage;
     const warning = shot.boardWarning || (isFallback ? "没有拿到真实图片，当前展示的是本地草图。请检查分镜图模型配置后重新生成。" : "");
-    const sourceTag = hasAiImage ? "真实生图" : useLocalSketch ? "火柴人草图" : "本地草图";
+    const sourceTag = hasAiImage ? "真实生图" : els.boardStyle.value === "火柴人" ? "本地火柴人草图" : "本地草图";
     return `
     <article class="board-card">
       <div class="frame ${isFallback ? "frame-fallback" : ""}">
@@ -1444,31 +1451,29 @@ async function generateBoards() {
   await hydrateMissingReferenceMeta();
   confirmed.forEach((shot) => {
     shot.boardWarning = "";
-    if (els.boardStyle.value === "火柴人") shot.boardImage = "";
+    shot.boardImage = "";
+    shot.boardSource = "";
+    shot.boardModel = "";
   });
   const button = $("#generate");
   const text = button.textContent;
   button.disabled = true;
-  button.textContent = els.boardStyle.value === "火柴人" ? "生成中..." : "调用生图中...";
+  button.textContent = "调用生图中...";
   try {
-    if (els.boardStyle.value !== "火柴人") {
-      const result = await requestStoryboardImages(confirmed);
-      (result.images || []).forEach((item) => {
-        const shot = confirmed.find((candidate) => candidate.no === item.no);
-        if (!shot) return;
-        shot.boardImage = item.image || "";
-        shot.boardSource = item.source || result.source || "ai-image";
-        shot.boardModel = item.model || result.model || "";
-      });
-      const generatedCount = confirmed.filter((shot) => shot.boardImage).length;
-      if (!generatedCount) throw new Error("图片模型没有返回可用图片。");
-      confirmed.forEach((shot) => {
-        if (!shot.boardImage) shot.boardWarning = "图片模型没有返回这一镜头的图片，已显示本地草图。";
-      });
-      showToast(generatedCount === confirmed.length ? `已生成 ${generatedCount} 张真实分镜图。` : `已生成 ${generatedCount} 张，未返回的镜头显示本地草图。`);
-    } else {
-      showToast("火柴人草图已生成。");
-    }
+    const result = await requestStoryboardImages(confirmed);
+    (result.images || []).forEach((item) => {
+      const shot = confirmed.find((candidate) => candidate.no === item.no);
+      if (!shot) return;
+      shot.boardImage = item.image || "";
+      shot.boardSource = item.source || result.source || "ai-image";
+      shot.boardModel = item.model || result.model || "";
+    });
+    const generatedCount = confirmed.filter((shot) => shot.boardImage).length;
+    if (!generatedCount) throw new Error("图片模型没有返回可用图片。");
+    confirmed.forEach((shot) => {
+      if (!shot.boardImage) shot.boardWarning = "图片模型没有返回这一镜头的图片，已显示本地草图。";
+    });
+    showToast(generatedCount === confirmed.length ? `已生成 ${generatedCount} 张真实分镜图。` : `已生成 ${generatedCount} 张，未返回的镜头显示本地草图。`);
   } catch (error) {
     console.warn(error);
     confirmed.forEach((shot) => {
@@ -1501,11 +1506,11 @@ function changeBoardStyle(style) {
     shot.boardSource = "";
     shot.boardModel = "";
   });
-  state.boardsGenerated = next === "火柴人" && state.shots.some((shot) => shot.status === "已确认");
+  state.boardsGenerated = false;
   renderBoards();
   saveCurrentProject();
   if (changed) {
-    showToast(next === "火柴人" ? "已切换为火柴人草图。" : `已切换为${next}，请重新点击生成分镜图。`);
+    showToast(`已切换为${next}，请重新点击生成分镜图。`);
   }
 }
 
@@ -1772,6 +1777,17 @@ function bindEvents() {
     if (action === "confirm") shot.status = "已确认";
     if (action === "unconfirm") shot.status = "待确认";
     if (action === "revise") shot.status = "需修改";
+    if (action === "remove-ref") {
+      shot.refName = "";
+      shot.refData = "";
+      shot.refMeta = null;
+      shot.boardImage = "";
+      shot.boardWarning = "";
+      shot.boardSource = "";
+      shot.boardModel = "";
+      if (shot.status === "已确认") shot.status = "待确认";
+      showToast("已删除这个镜头的参考图。");
+    }
     if (action === "delete") {
       state.shots.splice(index, 1);
       state.shots.forEach((item, i) => item.no = String(i + 1).padStart(2, "0"));
@@ -1798,7 +1814,6 @@ function bindEvents() {
     state.boardsGenerated = false;
     renderShots(); renderBoards(); saveCurrentProject(); showToast("参考图已上传，已提取构图参考。");
   });
-  document.querySelectorAll("[data-style]").forEach((btn) => btn.addEventListener("click", () => changeBoardStyle(btn.dataset.style)));
   ["projectName", "projectType", "duration", "aspect", "style", "platform"].forEach((id) => $(`#${id}`).addEventListener("input", () => { syncProjectFromForm(); scheduleAutoSave(); }));
   ["projectType", "aspect", "style", "platform"].forEach((id) => $(`#${id}`).addEventListener("blur", () => {
     if (id === "style") normalizeTagInput($(`#${id}`));
