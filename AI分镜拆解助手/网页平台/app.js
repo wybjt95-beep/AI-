@@ -447,6 +447,7 @@ function restoreProject(record) {
     id: shot.id || `${Date.now()}-${index}`,
     no: String(shot.no || index + 1).padStart(2, "0"),
     angle: textValue(shot.angle, "正面平视"),
+    blocking: textValue(shot.blocking, hasPeopleInShot(shot) ? "人物停留在画面中央，面向主要主体。" : "无人物调度"),
     transition: textValue(shot.transition, index === 0 ? "开场建立" : "直切承接"),
     status: shot.status || "待确认",
   }));
@@ -596,14 +597,14 @@ function renderAnalysis() {
 
 function storyboardBank() {
   return [
-    ["地点建立", "办公楼前建立镜头，年轻上班族推着新能源电动车进入画面，先交代地点、人物和产品关系。", "远景", "固定轻推", "道路线、环境", "地点、人物、产品关系"],
-    ["启动细节", "手部特写触发车辆启动，智能仪表亮起，表现启动平稳和操作轻便。", "特写", "微距推进", "车把、启动键、智能仪表", "启动细节与智能感"],
-    ["创意机位", "低机位贴近车轮跟拍，车辆从城市街道轻快经过，地面线条快速后退。", "近景", "低机位跟拍", "车轮、道路线", "轻便、速度与稳定"],
-    ["驾驶体验", "人物骑行经过路口，背景自然后移，画面重点放在安静、顺滑和真实通勤状态。", "中远景", "横向跟拍", "头盔、背包", "通勤体验"],
-    ["信息特写", "智能仪表清晰显示速度和电量，画面干净，不堆砌信息。", "特写", "轻微推进", "智能仪表、电量、速度", "智能卖点"],
-    ["安全瞬间", "人物在关键位置完成观察、停顿或确认动作，让安全感通过动作表达。", "中景", "跟随转定镜", "车灯、道路线", "安全感"],
-    ["轻松收尾", "人物到达办公楼前轻松停车，车辆停在画面前景，人物状态轻松。", "中景", "小幅环绕", "停车点、背包", "轻松收尾"],
-    ["口号留白", "广告收束，人物与车辆形成最后记忆点，画面侧边预留口号或字幕位置。", "广角", "慢慢拉远", "品牌口号占位", "品牌记忆"],
+    ["地点建立", "办公楼前建立镜头，年轻上班族推着新能源电动车进入画面，先交代地点、人物和产品关系。", "远景", "缓慢推近", "道路线、环境", "地点、人物、产品关系"],
+    ["启动细节", "手部特写触发车辆启动，智能仪表亮起，表现启动平稳和操作轻便。", "特写", "变焦推近", "车把、启动键、智能仪表", "启动细节与智能感"],
+    ["创意机位", "低机位贴近车轮跟拍，车辆从城市街道轻快经过，地面线条快速后退。", "近景", "侧向跟拍", "车轮、道路线", "轻便、速度与稳定"],
+    ["驾驶体验", "人物骑行经过路口，背景自然后移，画面重点放在安静、顺滑和真实通勤状态。", "全景", "横移跟拍", "头盔、背包", "通勤体验"],
+    ["信息特写", "智能仪表清晰显示速度和电量，画面干净，不堆砌信息。", "特写", "缓慢推近", "智能仪表、电量、速度", "智能卖点"],
+    ["安全瞬间", "人物在关键位置完成观察、停顿或确认动作，让安全感通过动作表达。", "中景", "固定镜头", "车灯、道路线", "安全感"],
+    ["轻松收尾", "人物到达办公楼前轻松停车，车辆停在画面前景，人物状态轻松。", "中景", "半环绕", "停车点、背包", "轻松收尾"],
+    ["口号留白", "广告收束，人物与车辆形成最后记忆点，画面侧边预留口号或字幕位置。", "全景", "缓慢拉远", "品牌口号占位", "品牌记忆"],
   ];
 }
 
@@ -645,23 +646,23 @@ function inferShotSize(text, index, total) {
   if (/手|眼神|表情|电脑|手机|杯|道具|细节|特写/.test(text)) return index ? "特写" : "近景";
   if (index === 0) return "远景";
   if (index === total - 1) return "中景";
-  return ["中景", "近景", "中远景"][index % 3];
+  return ["中景", "近景", "全景"][index % 3];
 }
 
 function inferCamera(text, index) {
-  if (/走|跑|穿过|移动|经过|骑|跟/.test(text)) return "跟拍";
-  if (/看|相视|对视|发现|望|笑/.test(text)) return "轻推至反应";
-  if (/放下|拿起|递|打开|启动/.test(text)) return "微距推进";
-  return ["固定镜头", "缓慢推进", "横向轻移", "小幅环绕"][index % 4];
+  if (/走|跑|穿过|移动|经过|骑|跟/.test(text)) return "侧向跟拍";
+  if (/看|相视|对视|发现|望|笑/.test(text)) return "缓慢推近";
+  if (/放下|拿起|递|打开|启动/.test(text)) return "变焦推近";
+  return ["固定镜头", "缓慢推近", "左横移", "半环绕"][index % 4];
 }
 
 function inferAngle(text, index) {
   if (/肩|背影|身后|跟随/.test(text)) return "过肩视角";
   if (/桌面|俯拍|摆放|书桌|电脑|手机|产品|餐|杯/.test(text)) return "俯视角度";
   if (/高楼|大楼|天空|仰望|宏大/.test(text)) return "低机位仰拍";
-  if (/手|眼神|表情|细节|特写/.test(text)) return "平视近角度";
+  if (/手|眼神|表情|细节|特写/.test(text)) return "正面平视";
   if (index === 0) return "正面平视";
-  return ["正面平视", "侧面视角", "三分之四侧前方", "过肩视角"][index % 4];
+  return ["正面平视", "侧面视角", "三分之二侧前方", "过肩视角"][index % 4];
 }
 
 function inferTransition(current, index, units = []) {
@@ -674,6 +675,24 @@ function inferTransition(current, index, units = []) {
   if (/黑|暗|门|墙|背影|遮挡|经过/.test(previous + current)) return "遮挡转场";
   if (/相似|同样|重复|呼应|圆|线条|光/.test(previous + current)) return "相似构图匹配";
   return ["直切承接", "节奏硬切", "同方向运动衔接", "画面重点匹配"][index % 4];
+}
+
+function hasPeopleInShot(shot) {
+  return !isPlaceholderValue(shot?.people);
+}
+
+function inferBlocking(text, index, peopleText = "") {
+  if (isPlaceholderValue(peopleText)) return "无人物调度";
+  if (/走|跑|穿过|漫步|移动|经过|进入/.test(text)) {
+    return index % 2
+      ? "人物从右侧入画，向画面中央移动，身体朝向前进方向，与场景形成纵深关系。"
+      : "人物从左侧入画，横穿画面后停留在画面中央，面向主要主体。";
+  }
+  if (/靠近|走向|来到|接近/.test(text)) return "人物从后景向前景移动，最终停留在前景偏中位置，面向主要主体。";
+  if (/离开|走出|远去/.test(text)) return "人物从画面中央向纵深移动并逐渐离开，背向镜头。";
+  if (/相视|对视|聊天|说|交流/.test(text)) return "多人左右分布或前后错位站位，身体略微转向彼此，形成对话关系。";
+  if (/电脑|桌|手机|产品|杯|道具/.test(text)) return "人物停留在主体道具一侧，身体朝向产品或道具，人物与产品形成前后层次。";
+  return "人物停留在画面中央或三分线位置，身体朝向主要主体，保持清晰的人物与场景关系。";
 }
 
 function localShotType(text, index, total) {
@@ -703,29 +722,33 @@ function localStoryboardShots() {
   let remain = duration - base * units.length;
   let currentLocation = first(state.detected.locations, "");
   const brief = els.globalNotes.value.trim();
-  return units.map((unit, i) => ({
-    id: `${Date.now()}-${i}`,
-    no: String(i + 1).padStart(2, "0"),
-    type: localShotType(unit, i, units.length),
-    content: unit,
-    shotSize: inferShotSize(unit, i, units.length),
-    angle: inferAngle(unit, i),
-    camera: inferCamera(unit, i),
-    transition: inferTransition(unit, i, units),
-    duration: `${base + (remain-- > 0 ? 1 : 0)}s`,
-    people: pickFromText(state.detected.people, unit, "待补充人物", i),
-    location: (currentLocation = state.detected.locations.find((item) => unit.includes(item)) || currentLocation || "待补充地点"),
-    props: state.detected.props.find((item) => unit.includes(item)) || inferPropText(unit),
-    product: pickFromText(state.detected.product, unit, "待补充产品", i),
-    time: pickFromText(state.detected.times, unit, "待补充时间段", i),
-    dialogue: pickFromText(state.detected.dialogue, unit, "无台词", i),
-    narration: pickFromText(state.detected.narration, unit, "无旁白", i),
-    focus: pickFromText(state.detected.sellingPoints, unit, brief ? `结合创作要求：${brief}` : "画面关系与情绪变化", i),
-    status: "待确认",
-    refName: "",
-    refData: "",
-    refMeta: null,
-  }));
+  return units.map((unit, i) => {
+    const people = pickFromText(state.detected.people, unit, "待补充人物", i);
+    return {
+      id: `${Date.now()}-${i}`,
+      no: String(i + 1).padStart(2, "0"),
+      type: localShotType(unit, i, units.length),
+      content: unit,
+      shotSize: inferShotSize(unit, i, units.length),
+      angle: inferAngle(unit, i),
+      camera: inferCamera(unit, i),
+      blocking: inferBlocking(unit, i, people),
+      transition: inferTransition(unit, i, units),
+      duration: `${base + (remain-- > 0 ? 1 : 0)}s`,
+      people,
+      location: (currentLocation = state.detected.locations.find((item) => unit.includes(item)) || currentLocation || "待补充地点"),
+      props: state.detected.props.find((item) => unit.includes(item)) || inferPropText(unit),
+      product: pickFromText(state.detected.product, unit, "待补充产品", i),
+      time: pickFromText(state.detected.times, unit, "待补充时间段", i),
+      dialogue: pickFromText(state.detected.dialogue, unit, "无台词", i),
+      narration: pickFromText(state.detected.narration, unit, "无旁白", i),
+      focus: pickFromText(state.detected.sellingPoints, unit, brief ? `结合创作要求：${brief}` : "画面关系与情绪变化", i),
+      status: "待确认",
+      refName: "",
+      refData: "",
+      refMeta: null,
+    };
+  });
 }
 
 function textValue(value, fallback = "") {
@@ -749,11 +772,13 @@ function regenerateShotFromFields(shot) {
   const product = cleanField(shot.product);
   const props = cleanField(shot.props);
   const focus = cleanField(shot.focus);
+  const blocking = cleanField(shot.blocking);
   const subject = [people, product].filter(Boolean).join("与") || people || product || "主要主体";
   const propText = props ? `，画面中包含${props}` : "";
+  const blockingText = blocking ? `，人物调度为${blocking}` : "";
   const spaceText = [time, location].filter(Boolean).join("，") || "当前场景";
   const focusText = focus ? `，画面重点是${focus}` : "，保留原镜头的动作与叙事节奏";
-  shot.content = `${spaceText}中，镜头围绕${subject}展开${propText}${focusText}。`;
+  shot.content = `${spaceText}中，镜头围绕${subject}展开${propText}${blockingText}${focusText}。`;
   shot.boardImage = "";
   shot.boardWarning = "";
   shot.boardSource = "";
@@ -771,6 +796,7 @@ function normalizeShot(shot, index) {
     shotSize: textValue(shot.shotSize, "中景"),
     angle: textValue(shot.angle, "正面平视"),
     camera: textValue(shot.camera, "固定镜头"),
+    blocking: textValue(shot.blocking, hasPeopleInShot(shot) ? "人物停留在画面中央，面向主要主体。" : "无人物调度"),
     transition: textValue(shot.transition, index === 0 ? "开场建立" : "直切承接"),
     duration: textValue(shot.duration, "3s"),
     people: textValue(shot.people, "待补充人物"),
@@ -1140,6 +1166,7 @@ function renderShots() {
         <textarea data-field="content">${esc(shot.content)}</textarea>
         <div class="shot-layout">
           <div class="shot-meta-row">${input("shotSize", shot.shotSize, "景别")}${input("duration", shot.duration, "时长")}${input("angle", shot.angle, "角度")}${input("camera", shot.camera, "运镜")}</div>
+          <div class="blocking-row">${longInput("blocking", shot.blocking, "人物调度")}</div>
           <div class="transition-row">${longInput("transition", shot.transition, "转场/衔接")}</div>
           <div class="shot-entity-row">
             ${multi("people", shot.people, "人物", state.detected.people)}
@@ -1170,7 +1197,7 @@ function compact(value, max = 18) {
 }
 
 function textBlob(shot) {
-  return [shot.content, shot.shotSize, shot.angle, shot.camera, shot.transition, shot.people, shot.location, shot.props, shot.product, shot.time, shot.focus, shot.dialogue, shot.narration].join(" ");
+  return [shot.content, shot.shotSize, shot.angle, shot.camera, shot.blocking, shot.transition, shot.people, shot.location, shot.props, shot.product, shot.time, shot.focus, shot.dialogue, shot.narration].join(" ");
 }
 
 function hasAny(text, words) {
@@ -1334,7 +1361,7 @@ function cameraGuideSvg(camera, palette, id) {
   const text = String(camera || "");
   if (hasAny(text, ["跟", "横", "移"])) return `<path d="M80 58 H190" stroke="${palette.accent}" stroke-width="5" marker-end="url(#arrow-${id})"/><text x="82" y="48" font-family="Microsoft YaHei" font-size="13" fill="${palette.accent}">跟随移动</text>`;
   if (hasAny(text, ["推", "推进"])) return `<path d="M560 62 C500 80 468 108 438 150" stroke="${palette.accent}" stroke-width="5" fill="none" marker-end="url(#arrow-${id})"/><text x="456" y="52" font-family="Microsoft YaHei" font-size="13" fill="${palette.accent}">镜头推进</text>`;
-  if (hasAny(text, ["拉", "远"])) return `<path d="M430 86 C492 72 532 58 588 42" stroke="${palette.accent}" stroke-width="5" fill="none" marker-end="url(#arrow-${id})"/><text x="442" y="112" font-family="Microsoft YaHei" font-size="13" fill="${palette.accent}">慢慢拉远</text>`;
+  if (hasAny(text, ["拉", "远"])) return `<path d="M430 86 C492 72 532 58 588 42" stroke="${palette.accent}" stroke-width="5" fill="none" marker-end="url(#arrow-${id})"/><text x="442" y="112" font-family="Microsoft YaHei" font-size="13" fill="${palette.accent}">缓慢拉远</text>`;
   if (hasAny(text, ["环", "绕", "摇"])) return `<path d="M472 72 C560 55 600 116 540 164 C486 208 402 174 424 112" stroke="${palette.accent}" stroke-width="5" fill="none" marker-end="url(#arrow-${id})"/><text x="454" y="54" font-family="Microsoft YaHei" font-size="13" fill="${palette.accent}">环绕/摇移</text>`;
   return `<rect x="475" y="38" width="112" height="58" rx="7" fill="none" stroke="${palette.accent}" stroke-width="3"/><text x="494" y="73" font-family="Microsoft YaHei" font-size="13" fill="${palette.accent}">固定构图</text>`;
 }
@@ -1353,7 +1380,7 @@ function boardSvg(shot, index) {
   const personY = clamp(82 + composition.subjectY * 112, 108, 172);
   const people = close
     ? `<path d="M${personX - 68} ${personY + 116} C${personX - 20} ${personY + 64} ${personX + 50} ${personY + 72} ${personX + 108} ${personY + 118}" stroke="${palette.line}" stroke-width="13" fill="none" stroke-linecap="round" opacity=".7"/>`
-    : Array.from({ length: peopleCount }, (_, i) => personSvg(personX + i * 62 - (peopleCount - 1) * 28, personY + (i % 2) * 14, /远景|广角/.test(String(shot.shotSize || "")) ? .62 : .82, palette, i)).join("");
+    : Array.from({ length: peopleCount }, (_, i) => personSvg(personX + i * 62 - (peopleCount - 1) * 28, personY + (i % 2) * 14, /远景|全景/.test(String(shot.shotSize || "")) ? .62 : .82, palette, i)).join("");
   const focusBox = `<rect x="22" y="292" width="596" height="42" rx="8" fill="rgba(255,255,255,.72)" stroke="${palette.line}" stroke-width="2" opacity=".92"/>
     <text x="38" y="318" font-family="Microsoft YaHei" font-size="14" fill="${palette.line}">场景：${esc(compact(shot.location, 12))} · 人物：${esc(compact(shot.people, 12))} · 道具：${esc(compact(shot.props, 12))}</text>`;
   return `<svg viewBox="0 0 640 360" xmlns="http://www.w3.org/2000/svg">
@@ -1397,7 +1424,7 @@ function renderBoards() {
         <p>${esc(shot.content)}</p>
         ${shot.refData ? `<div class="board-refbox"><img class="board-ref" src="${shot.refData}" alt="${esc(shot.refName)}" /><span>参考图：${esc(shot.refName)}</span></div>` : ""}
         ${warning ? `<p class="board-warning">${esc(warning)}</p>` : ""}
-        <div class="board-tags"><span class="tag">${esc(shot.shotSize)}</span><span class="tag">${esc(shot.angle)}</span><span class="tag">${esc(shot.camera)}</span><span class="tag">${esc(shot.transition)}</span><span class="tag">${esc(els.boardStyle.value)}</span><span class="tag">${sourceTag}</span>${hasAiImage && shot.boardModel ? `<span class="tag">${esc(shot.boardModel)}</span>` : ""}<span class="tag">${shot.refData ? "含参考图" : "未上传参考图"}</span></div>
+        <div class="board-tags"><span class="tag">${esc(shot.shotSize)}</span><span class="tag">${esc(shot.angle)}</span><span class="tag">${esc(shot.camera)}</span><span class="tag">${esc(compact(shot.blocking, 12))}</span><span class="tag">${esc(shot.transition)}</span><span class="tag">${esc(els.boardStyle.value)}</span><span class="tag">${sourceTag}</span>${hasAiImage && shot.boardModel ? `<span class="tag">${esc(shot.boardModel)}</span>` : ""}<span class="tag">${shot.refData ? "含参考图" : "未上传参考图"}</span></div>
       </div>
     </article>`;
   }).join("");
@@ -1424,6 +1451,7 @@ function imagePayload(confirmed) {
       shotSize: shot.shotSize,
       angle: shot.angle,
       camera: shot.camera,
+      blocking: shot.blocking,
       transition: shot.transition,
       duration: shot.duration,
       people: shot.people,
@@ -1467,6 +1495,7 @@ function exportPayload(format) {
       shotSize: shot.shotSize,
       angle: shot.angle,
       camera: shot.camera,
+      blocking: shot.blocking,
       transition: shot.transition,
       duration: shot.duration,
       people: shot.people,
@@ -1702,7 +1731,7 @@ function addShot() {
   const i = state.shots.length;
   state.shots.push({
     id: `${Date.now()}-${i}`, no: String(i + 1).padStart(2, "0"), type: "新增镜头", content: "请补充画面内容。",
-    shotSize: "中景", duration: "3s", angle: "正面平视", camera: "固定镜头", people: first(state.detected.people, "待补充人物"),
+    shotSize: "中景", duration: "3s", angle: "正面平视", camera: "固定镜头", blocking: "人物停留在画面中央，面向主要主体。", people: first(state.detected.people, "待补充人物"),
     location: first(state.detected.locations, "待补充地点"), props: first(state.detected.props, "待补充道具"),
     product: first(state.detected.product, "待补充产品"), time: first(state.detected.times, "待补充时间段"),
     transition: i === 0 ? "开场建立" : "直切承接", dialogue: "无台词", narration: "无旁白", focus: "待补充", status: "待确认", refName: "", refData: "", refMeta: null,

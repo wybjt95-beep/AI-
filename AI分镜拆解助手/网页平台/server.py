@@ -1014,14 +1014,14 @@ def requested_shot_count(payload):
 
 def storyboard_bank():
     return [
-        ["地点建立", "办公楼前建立镜头，年轻上班族推着新能源电动车进入画面，先交代地点、人物和产品关系。", "远景", "固定轻推", "道路线、环境", "地点、人物、产品关系"],
-        ["启动细节", "手部特写触发车辆启动，智能仪表亮起，表现启动平稳和操作轻便。", "特写", "微距推进", "车把、启动键、智能仪表", "启动细节与智能感"],
-        ["创意机位", "低机位贴近车轮跟拍，车辆从城市街道轻快经过，地面线条快速后退。", "近景", "低机位跟拍", "车轮、道路线", "轻便、速度与稳定"],
-        ["驾驶体验", "人物骑行经过路口，背景自然后移，画面重点放在安静、顺滑和真实通勤状态。", "中远景", "横向跟拍", "头盔、背包", "通勤体验"],
-        ["信息特写", "智能仪表清晰显示速度和电量，画面干净，不堆砌信息。", "特写", "轻微推进", "智能仪表、电量、速度", "智能卖点"],
-        ["安全瞬间", "人物在关键位置完成观察、停顿或确认动作，让安全感通过动作表达。", "中景", "跟随转定镜", "车灯、道路线", "安全感"],
-        ["轻松收尾", "人物到达办公楼前轻松停车，车辆停在画面前景，人物状态轻松。", "中景", "小幅环绕", "停车点、背包", "轻松收尾"],
-        ["口号留白", "广告收束，人物与车辆形成最后记忆点，画面侧边预留口号或字幕位置。", "广角", "慢慢拉远", "品牌口号占位", "品牌记忆"],
+        ["地点建立", "办公楼前建立镜头，年轻上班族推着新能源电动车进入画面，先交代地点、人物和产品关系。", "远景", "缓慢推近", "道路线、环境", "地点、人物、产品关系"],
+        ["启动细节", "手部特写触发车辆启动，智能仪表亮起，表现启动平稳和操作轻便。", "特写", "变焦推近", "车把、启动键、智能仪表", "启动细节与智能感"],
+        ["创意机位", "低机位贴近车轮跟拍，车辆从城市街道轻快经过，地面线条快速后退。", "近景", "侧向跟拍", "车轮、道路线", "轻便、速度与稳定"],
+        ["驾驶体验", "人物骑行经过路口，背景自然后移，画面重点放在安静、顺滑和真实通勤状态。", "全景", "横移跟拍", "头盔、背包", "通勤体验"],
+        ["信息特写", "智能仪表清晰显示速度和电量，画面干净，不堆砌信息。", "特写", "缓慢推近", "智能仪表、电量、速度", "智能卖点"],
+        ["安全瞬间", "人物在关键位置完成观察、停顿或确认动作，让安全感通过动作表达。", "中景", "固定镜头", "车灯、道路线", "安全感"],
+        ["轻松收尾", "人物到达办公楼前轻松停车，车辆停在画面前景，人物状态轻松。", "中景", "半环绕", "停车点、背包", "轻松收尾"],
+        ["口号留白", "广告收束，人物与车辆形成最后记忆点，画面侧边预留口号或字幕位置。", "全景", "缓慢拉远", "品牌口号占位", "品牌记忆"],
     ]
 
 
@@ -1095,17 +1095,17 @@ def infer_mock_shot_size(text, index, total):
         return "远景"
     if index == total - 1:
         return "中景"
-    return ["中景", "近景", "中远景"][index % 3]
+    return ["中景", "近景", "全景"][index % 3]
 
 
 def infer_mock_camera(text, index):
     if any(word in text for word in ["走", "跑", "穿过", "移动", "经过", "骑", "跟"]):
-        return "跟拍"
+        return "侧向跟拍"
     if any(word in text for word in ["看", "相视", "对视", "发现", "望"]):
-        return "轻推至反应"
+        return "缓慢推近"
     if any(word in text for word in ["放下", "拿起", "递", "打开", "启动"]):
-        return "微距推进"
-    return ["固定镜头", "缓慢推进", "横向轻移", "小幅环绕"][index % 4]
+        return "变焦推近"
+    return ["固定镜头", "缓慢推近", "左横移", "半环绕"][index % 4]
 
 
 def infer_mock_angle(text, index):
@@ -1116,10 +1116,10 @@ def infer_mock_angle(text, index):
     if any(word in text for word in ["高楼", "大楼", "天空", "仰望", "宏大"]):
         return "低机位仰拍"
     if any(word in text for word in ["手", "眼神", "表情", "细节", "特写"]):
-        return "平视近角度"
+        return "正面平视"
     if index == 0:
         return "正面平视"
-    return ["正面平视", "侧面视角", "三分之四侧前方", "过肩视角"][index % 4]
+    return ["正面平视", "侧面视角", "三分之二侧前方", "过肩视角"][index % 4]
 
 
 def infer_mock_transition(current, index, units):
@@ -1140,6 +1140,29 @@ def infer_mock_transition(current, index, units):
     if any(word in text for word in ["相似", "同样", "重复", "呼应", "圆", "线条", "光"]):
         return "相似构图匹配"
     return ["直切承接", "节奏硬切", "同方向运动衔接", "画面重点匹配"][index % 4]
+
+
+def is_placeholder_text(value):
+    text = str(value or "").strip()
+    return not text or text.startswith("待补充") or text in {"无台词", "无旁白", "未识别", "未上传"}
+
+
+def infer_mock_blocking(text, index, people_text=""):
+    if is_placeholder_text(people_text):
+        return "无人物调度"
+    if any(word in text for word in ["走", "跑", "穿过", "漫步", "移动", "经过", "进入"]):
+        if index % 2:
+            return "人物从右侧入画，向画面中央移动，身体朝向前进方向，与场景形成纵深关系。"
+        return "人物从左侧入画，横穿画面后停留在画面中央，面向主要主体。"
+    if any(word in text for word in ["靠近", "走向", "来到", "接近"]):
+        return "人物从后景向前景移动，最终停留在前景偏中位置，面向主要主体。"
+    if any(word in text for word in ["离开", "走出", "远去"]):
+        return "人物从画面中央向纵深移动并逐渐离开，背向镜头。"
+    if any(word in text for word in ["相视", "对视", "聊天", "说", "交流"]):
+        return "多人左右分布或前后错位站位，身体略微转向彼此，形成对话关系。"
+    if any(word in text for word in ["电脑", "桌", "手机", "产品", "杯", "道具"]):
+        return "人物停留在主体道具一侧，身体朝向产品或道具，人物与产品形成前后层次。"
+    return "人物停留在画面中央或三分线位置，身体朝向主要主体，保持清晰的人物与场景关系。"
 
 
 def mock_shot_type(text, index, total):
@@ -1267,6 +1290,7 @@ def mock_split(payload, source="mock"):
                 "shotSize": infer_mock_shot_size(unit, index, len(units)),
                 "angle": infer_mock_angle(unit, index),
                 "camera": infer_mock_camera(unit, index),
+                "blocking": infer_mock_blocking(unit, index, people_text),
                 "transition": infer_mock_transition(unit, index, units),
                 "duration": f"{shot_duration}s",
                 "people": people_text,
@@ -1402,6 +1426,7 @@ def normalize_shots(raw_shots):
                 "angle": as_text(pick(raw, "angle", "viewpoint", "cameraAngle", "shotAngle", "拍摄角度", "角度", "视角", "机位角度", default="正面平视"), "正面平视"),
                 "duration": as_text(pick(raw, "duration", "timeLength", "时长", default="3s"), "3s"),
                 "camera": as_text(pick(raw, "camera", "movement", "cameraMove", "运镜", "镜头运动", default="固定镜头"), "固定镜头"),
+                "blocking": as_text(pick(raw, "blocking", "staging", "movementBlocking", "characterBlocking", "人物调度", "人物走位", "人物站位", "调度", "走位", default="无人物调度"), "无人物调度"),
                 "transition": as_text(pick(raw, "transition", "cut", "edit", "transitionDesign", "transitionStyle", "转场", "转场方式", "衔接", "衔接方式", "镜头衔接", default=("开场建立" if index == 0 else "直切承接")), "直切承接"),
                 "people": as_text(pick(raw, "people", "characters", "person", "人物", "角色", default="待补充人物"), "待补充人物"),
                 "location": as_text(pick(raw, "location", "scene", "place", "场景", "地点", default="待补充地点"), "待补充地点"),
@@ -1623,6 +1648,7 @@ def image_prompt_for_shot(shot, payload, index):
         "景别": shot.get("shotSize") or "",
         "拍摄角度": shot.get("angle") or "",
         "运镜": shot.get("camera") or "",
+        "人物调度": shot.get("blocking") or "",
         "转场衔接": shot.get("transition") or "",
         "人物": shot.get("people") or "",
         "场景": shot.get("location") or "",
@@ -2071,6 +2097,7 @@ def export_shot_headers():
         "景别",
         "角度",
         "运镜",
+        "人物调度",
         "转场/衔接",
         "时长",
         "人物",
@@ -2106,6 +2133,7 @@ def export_shot_rows(payload):
                 shot.get("shotSize"),
                 shot.get("angle"),
                 shot.get("camera"),
+                shot.get("blocking"),
                 shot.get("transition"),
                 shot.get("duration"),
                 shot.get("people"),
@@ -2611,8 +2639,9 @@ def ppt_slides(payload):
         for shot in chunk:
             lines.extend(
                 [
-                    f"{shot.get('no')} {export_text(shot.get('type'), '镜头')}｜{export_text(shot.get('shotSize'), '景别')}｜{export_text(shot.get('angle'), '角度')}｜{export_text(shot.get('camera'), '运镜')}｜{export_text(shot.get('transition'), '转场')}｜{export_text(shot.get('duration'), '时长')}",
+                    f"{shot.get('no')} {export_text(shot.get('type'), '镜头')}｜{export_text(shot.get('shotSize'), '景别')}｜{export_text(shot.get('angle'), '角度')}｜{export_text(shot.get('camera'), '运镜')}｜{export_text(shot.get('duration'), '时长')}",
                     f"画面：{short_text(shot.get('content'), 80)}",
+                    f"调度/转场：{short_text(shot.get('blocking'), 42)} / {short_text(shot.get('transition'), 42)}",
                     f"人物/场景/道具：{short_text(shot.get('people'), 20)} / {short_text(shot.get('location'), 20)} / {short_text(shot.get('props'), 24)}",
                     "",
                 ]
