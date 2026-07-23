@@ -648,10 +648,12 @@ function inferPropText(text, fallback = "环境元素") {
 }
 
 function inferShotSize(text, index, total) {
-  if (/手|眼神|表情|电脑|手机|杯|道具|细节|特写/.test(text)) return index ? "特写" : "近景";
+  if (/眼神|表情/.test(text)) return "近景";
+  if (/手|按钮|仪表|屏幕|局部|细节|特写/.test(text)) return "特写";
+  if (/多人|两人|关系|互动|交流|走|跑|穿过|移动|进入|离开|产品|操作/.test(text)) return "中全景";
   if (index === 0) return "远景";
   if (index === total - 1) return "中景";
-  return ["中景", "近景", "全景"][index % 3];
+  return ["中景", "中全景", "全景", "中近景"][index % 4];
 }
 
 function inferCamera(text, index) {
@@ -663,11 +665,11 @@ function inferCamera(text, index) {
 
 function inferAngle(text, index) {
   if (/肩|背影|身后|跟随/.test(text)) return "过肩视角";
-  if (/桌面|俯拍|摆放|书桌|电脑|手机|产品|餐|杯/.test(text)) return "俯视角度";
+  if (/桌面|俯拍|摆放|书桌|电脑|手机|产品|餐|杯|布局|站位/.test(text)) return "高机位俯拍";
   if (/高楼|大楼|天空|仰望|宏大/.test(text)) return "低机位仰拍";
   if (/手|眼神|表情|细节|特写/.test(text)) return "正面平视";
   if (index === 0) return "正面平视";
-  return ["正面平视", "侧面视角", "三分之二侧前方", "过肩视角"][index % 4];
+  return ["正面平视", "侧面平视", "三分之二侧前方平视", "过肩视角"][index % 4];
 }
 
 function inferTransition(current, index, units = []) {

@@ -1117,13 +1117,17 @@ def infer_prop_text(text, fallback="环境元素"):
 
 
 def infer_mock_shot_size(text, index, total):
-    if any(word in text for word in ["手", "眼神", "表情", "电脑", "手机", "杯", "道具", "细节", "特写"]):
-        return "特写" if index else "近景"
+    if any(word in text for word in ["眼神", "表情"]):
+        return "近景"
+    if any(word in text for word in ["手", "按钮", "仪表", "屏幕", "局部", "细节", "特写"]):
+        return "特写"
+    if any(word in text for word in ["多人", "两人", "关系", "互动", "交流", "走", "跑", "穿过", "移动", "进入", "离开", "产品", "操作"]):
+        return "中全景"
     if index == 0:
         return "远景"
     if index == total - 1:
         return "中景"
-    return ["中景", "近景", "全景"][index % 3]
+    return ["中景", "中全景", "全景", "中近景"][index % 4]
 
 
 def infer_mock_camera(text, index):
@@ -1139,15 +1143,15 @@ def infer_mock_camera(text, index):
 def infer_mock_angle(text, index):
     if any(word in text for word in ["肩", "背影", "身后", "跟随"]):
         return "过肩视角"
-    if any(word in text for word in ["桌面", "俯拍", "摆放", "书桌", "电脑", "手机", "产品", "餐", "杯"]):
-        return "俯视角度"
+    if any(word in text for word in ["桌面", "俯拍", "摆放", "书桌", "电脑", "手机", "产品", "餐", "杯", "布局", "站位"]):
+        return "高机位俯拍"
     if any(word in text for word in ["高楼", "大楼", "天空", "仰望", "宏大"]):
         return "低机位仰拍"
     if any(word in text for word in ["手", "眼神", "表情", "细节", "特写"]):
         return "正面平视"
     if index == 0:
         return "正面平视"
-    return ["正面平视", "侧面视角", "三分之二侧前方", "过肩视角"][index % 4]
+    return ["正面平视", "侧面平视", "三分之二侧前方平视", "过肩视角"][index % 4]
 
 
 def infer_mock_transition(current, index, units):
