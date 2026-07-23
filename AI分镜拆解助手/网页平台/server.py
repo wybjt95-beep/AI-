@@ -1122,6 +1122,26 @@ def infer_mock_angle(text, index):
     return ["正面平视", "侧面视角", "三分之四侧前方", "过肩视角"][index % 4]
 
 
+def infer_mock_transition(current, index, units):
+    if index == 0:
+        return "开场建立"
+    previous = units[index - 1] if index > 0 else ""
+    text = f"{previous} {current}"
+    if any(word in text for word in ["看", "望", "对视", "眼神", "发现"]):
+        return "视线匹配转场"
+    if any(word in text for word in ["走", "跑", "穿过", "进入", "离开", "推门", "转身", "移动"]):
+        return "动作接动作"
+    if any(word in text for word in ["手", "拿起", "放下", "打开", "按下", "递", "触碰"]):
+        return "动作细节匹配"
+    if any(word in text for word in ["声音", "呼喊", "旁白", "音乐", "电话", "铃声", "台词", "说"]):
+        return "声音先行转场"
+    if any(word in text for word in ["黑", "暗", "门", "墙", "背影", "遮挡", "经过"]):
+        return "遮挡转场"
+    if any(word in text for word in ["相似", "同样", "重复", "呼应", "圆", "线条", "光"]):
+        return "相似构图匹配"
+    return ["直切承接", "节奏硬切", "同方向运动衔接", "画面重点匹配"][index % 4]
+
+
 def mock_shot_type(text, index, total):
     if index == 0:
         return "场景建立"
@@ -1247,6 +1267,7 @@ def mock_split(payload, source="mock"):
                 "shotSize": infer_mock_shot_size(unit, index, len(units)),
                 "angle": infer_mock_angle(unit, index),
                 "camera": infer_mock_camera(unit, index),
+                "transition": infer_mock_transition(unit, index, units),
                 "duration": f"{shot_duration}s",
                 "people": people_text,
                 "location": location,
@@ -1381,6 +1402,7 @@ def normalize_shots(raw_shots):
                 "angle": as_text(pick(raw, "angle", "viewpoint", "cameraAngle", "shotAngle", "拍摄角度", "角度", "视角", "机位角度", default="正面平视"), "正面平视"),
                 "duration": as_text(pick(raw, "duration", "timeLength", "时长", default="3s"), "3s"),
                 "camera": as_text(pick(raw, "camera", "movement", "cameraMove", "运镜", "镜头运动", default="固定镜头"), "固定镜头"),
+                "transition": as_text(pick(raw, "transition", "cut", "edit", "transitionDesign", "transitionStyle", "转场", "转场方式", "衔接", "衔接方式", "镜头衔接", default=("开场建立" if index == 0 else "直切承接")), "直切承接"),
                 "people": as_text(pick(raw, "people", "characters", "person", "人物", "角色", default="待补充人物"), "待补充人物"),
                 "location": as_text(pick(raw, "location", "scene", "place", "场景", "地点", default="待补充地点"), "待补充地点"),
                 "props": as_text(pick(raw, "props", "objects", "items", "道具", default="待补充道具"), "待补充道具"),
@@ -1601,6 +1623,7 @@ def image_prompt_for_shot(shot, payload, index):
         "景别": shot.get("shotSize") or "",
         "拍摄角度": shot.get("angle") or "",
         "运镜": shot.get("camera") or "",
+        "转场衔接": shot.get("transition") or "",
         "人物": shot.get("people") or "",
         "场景": shot.get("location") or "",
         "道具": shot.get("props") or "",
@@ -2048,6 +2071,7 @@ def export_shot_headers():
         "景别",
         "角度",
         "运镜",
+        "转场/衔接",
         "时长",
         "人物",
         "场景",
@@ -2082,6 +2106,7 @@ def export_shot_rows(payload):
                 shot.get("shotSize"),
                 shot.get("angle"),
                 shot.get("camera"),
+                shot.get("transition"),
                 shot.get("duration"),
                 shot.get("people"),
                 shot.get("location"),
@@ -2176,7 +2201,7 @@ def xlsx_cell(row_index, col_index, value, style=None):
 
 def xlsx_sheet_xml(rows, freeze_header=False, drawing_rel_id=None, row_heights=None):
     max_cols = max((len(row) for row in rows), default=1)
-    default_widths = [14, 18, 42, 14, 14, 14, 12, 18, 18, 18, 18, 12, 24, 24, 34, 12, 18, 24, 34]
+    default_widths = [14, 18, 42, 14, 14, 14, 20, 12, 18, 18, 18, 18, 12, 24, 24, 34, 12, 18, 24, 34]
     cols = "".join(
         f'<col min="{i}" max="{i}" width="{default_widths[i - 1] if i <= len(default_widths) else 18}" customWidth="1"/>'
         for i in range(1, max_cols + 1)
@@ -2586,7 +2611,7 @@ def ppt_slides(payload):
         for shot in chunk:
             lines.extend(
                 [
-                    f"{shot.get('no')} {export_text(shot.get('type'), '镜头')}｜{export_text(shot.get('shotSize'), '景别')}｜{export_text(shot.get('angle'), '角度')}｜{export_text(shot.get('camera'), '运镜')}｜{export_text(shot.get('duration'), '时长')}",
+                    f"{shot.get('no')} {export_text(shot.get('type'), '镜头')}｜{export_text(shot.get('shotSize'), '景别')}｜{export_text(shot.get('angle'), '角度')}｜{export_text(shot.get('camera'), '运镜')}｜{export_text(shot.get('transition'), '转场')}｜{export_text(shot.get('duration'), '时长')}",
                     f"画面：{short_text(shot.get('content'), 80)}",
                     f"人物/场景/道具：{short_text(shot.get('people'), 20)} / {short_text(shot.get('location'), 20)} / {short_text(shot.get('props'), 24)}",
                     "",

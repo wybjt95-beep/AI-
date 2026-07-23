@@ -1238,7 +1238,8 @@ textarea {
   background: var(--ink);
 }
 
-.long-row {
+.long-row,
+.transition-row {
   display: grid;
   gap: 10px;
 }

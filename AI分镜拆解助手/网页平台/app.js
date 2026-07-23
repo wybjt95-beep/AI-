@@ -447,6 +447,7 @@ function restoreProject(record) {
     id: shot.id || `${Date.now()}-${index}`,
     no: String(shot.no || index + 1).padStart(2, "0"),
     angle: textValue(shot.angle, "正面平视"),
+    transition: textValue(shot.transition, index === 0 ? "开场建立" : "直切承接"),
     status: shot.status || "待确认",
   }));
   state.boardsGenerated = Boolean(record.boardsGenerated);
@@ -663,6 +664,18 @@ function inferAngle(text, index) {
   return ["正面平视", "侧面视角", "三分之四侧前方", "过肩视角"][index % 4];
 }
 
+function inferTransition(current, index, units = []) {
+  if (index === 0) return "开场建立";
+  const previous = units[index - 1] || "";
+  if (/看|望|对视|眼神|发现/.test(previous + current)) return "视线匹配转场";
+  if (/走|跑|穿过|进入|离开|推门|转身|移动/.test(previous + current)) return "动作接动作";
+  if (/手|拿起|放下|打开|按下|递|触碰/.test(previous + current)) return "动作细节匹配";
+  if (/声音|呼喊|旁白|音乐|电话|铃声|台词|说/.test(previous + current)) return "声音先行转场";
+  if (/黑|暗|门|墙|背影|遮挡|经过/.test(previous + current)) return "遮挡转场";
+  if (/相似|同样|重复|呼应|圆|线条|光/.test(previous + current)) return "相似构图匹配";
+  return ["直切承接", "节奏硬切", "同方向运动衔接", "画面重点匹配"][index % 4];
+}
+
 function localShotType(text, index, total) {
   if (index === 0) return "场景建立";
   if (index === total - 1) return "情绪收束";
@@ -698,6 +711,7 @@ function localStoryboardShots() {
     shotSize: inferShotSize(unit, i, units.length),
     angle: inferAngle(unit, i),
     camera: inferCamera(unit, i),
+    transition: inferTransition(unit, i, units),
     duration: `${base + (remain-- > 0 ? 1 : 0)}s`,
     people: pickFromText(state.detected.people, unit, "待补充人物", i),
     location: (currentLocation = state.detected.locations.find((item) => unit.includes(item)) || currentLocation || "待补充地点"),
@@ -757,6 +771,7 @@ function normalizeShot(shot, index) {
     shotSize: textValue(shot.shotSize, "中景"),
     angle: textValue(shot.angle, "正面平视"),
     camera: textValue(shot.camera, "固定镜头"),
+    transition: textValue(shot.transition, index === 0 ? "开场建立" : "直切承接"),
     duration: textValue(shot.duration, "3s"),
     people: textValue(shot.people, "待补充人物"),
     location: textValue(shot.location, "待补充地点"),
@@ -1125,6 +1140,7 @@ function renderShots() {
         <textarea data-field="content">${esc(shot.content)}</textarea>
         <div class="shot-layout">
           <div class="shot-meta-row">${input("shotSize", shot.shotSize, "景别")}${input("duration", shot.duration, "时长")}${input("angle", shot.angle, "角度")}${input("camera", shot.camera, "运镜")}</div>
+          <div class="transition-row">${longInput("transition", shot.transition, "转场/衔接")}</div>
           <div class="shot-entity-row">
             ${multi("people", shot.people, "人物", state.detected.people)}
             ${multi("location", shot.location, "场景", state.detected.locations)}
@@ -1154,7 +1170,7 @@ function compact(value, max = 18) {
 }
 
 function textBlob(shot) {
-  return [shot.content, shot.shotSize, shot.angle, shot.camera, shot.people, shot.location, shot.props, shot.product, shot.time, shot.focus, shot.dialogue, shot.narration].join(" ");
+  return [shot.content, shot.shotSize, shot.angle, shot.camera, shot.transition, shot.people, shot.location, shot.props, shot.product, shot.time, shot.focus, shot.dialogue, shot.narration].join(" ");
 }
 
 function hasAny(text, words) {
@@ -1381,7 +1397,7 @@ function renderBoards() {
         <p>${esc(shot.content)}</p>
         ${shot.refData ? `<div class="board-refbox"><img class="board-ref" src="${shot.refData}" alt="${esc(shot.refName)}" /><span>参考图：${esc(shot.refName)}</span></div>` : ""}
         ${warning ? `<p class="board-warning">${esc(warning)}</p>` : ""}
-        <div class="board-tags"><span class="tag">${esc(shot.shotSize)}</span><span class="tag">${esc(shot.angle)}</span><span class="tag">${esc(shot.camera)}</span><span class="tag">${esc(els.boardStyle.value)}</span><span class="tag">${sourceTag}</span>${hasAiImage && shot.boardModel ? `<span class="tag">${esc(shot.boardModel)}</span>` : ""}<span class="tag">${shot.refData ? "含参考图" : "未上传参考图"}</span></div>
+        <div class="board-tags"><span class="tag">${esc(shot.shotSize)}</span><span class="tag">${esc(shot.angle)}</span><span class="tag">${esc(shot.camera)}</span><span class="tag">${esc(shot.transition)}</span><span class="tag">${esc(els.boardStyle.value)}</span><span class="tag">${sourceTag}</span>${hasAiImage && shot.boardModel ? `<span class="tag">${esc(shot.boardModel)}</span>` : ""}<span class="tag">${shot.refData ? "含参考图" : "未上传参考图"}</span></div>
       </div>
     </article>`;
   }).join("");
@@ -1408,6 +1424,7 @@ function imagePayload(confirmed) {
       shotSize: shot.shotSize,
       angle: shot.angle,
       camera: shot.camera,
+      transition: shot.transition,
       duration: shot.duration,
       people: shot.people,
       location: shot.location,
@@ -1450,6 +1467,7 @@ function exportPayload(format) {
       shotSize: shot.shotSize,
       angle: shot.angle,
       camera: shot.camera,
+      transition: shot.transition,
       duration: shot.duration,
       people: shot.people,
       location: shot.location,
@@ -1687,7 +1705,7 @@ function addShot() {
     shotSize: "中景", duration: "3s", angle: "正面平视", camera: "固定镜头", people: first(state.detected.people, "待补充人物"),
     location: first(state.detected.locations, "待补充地点"), props: first(state.detected.props, "待补充道具"),
     product: first(state.detected.product, "待补充产品"), time: first(state.detected.times, "待补充时间段"),
-    dialogue: "无台词", narration: "无旁白", focus: "待补充", status: "待确认", refName: "", refData: "", refMeta: null,
+    transition: i === 0 ? "开场建立" : "直切承接", dialogue: "无台词", narration: "无旁白", focus: "待补充", status: "待确认", refName: "", refData: "", refMeta: null,
   });
   renderShots(); renderSummary(); saveCurrentProject();
 }
