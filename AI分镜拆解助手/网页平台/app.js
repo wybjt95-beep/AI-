@@ -121,15 +121,20 @@ function suggestShotCount() {
     min = 10; max = 18; ideal = Math.round(duration * 0.45);
   } else if (duration <= 60) {
     min = 18; max = 35; ideal = Math.round(duration * 0.42);
+  } else if (duration <= 120) {
+    min = Math.round(duration / 2.8);
+    max = Math.round(duration / 1.6);
+    ideal = Math.round(duration / 2);
   } else {
-    min = Math.round(duration / 8);
-    max = Math.round(duration / 3.5);
-    ideal = Math.round(duration / 5);
+    min = Math.round(duration / 6);
+    max = Math.round(duration / 2.5);
+    ideal = Math.round(duration / 4.5);
   }
   const densityBonus = entityCount >= 8 ? 2 : entityCount >= 5 ? 1 : 0;
   const textDensity = Math.ceil(script.length / 80);
   const unitBased = Math.max(units.length, textDensity);
-  const blended = Math.round(ideal * 0.7 + Math.min(max, unitBased) * 0.3) + densityBonus;
+  const densityWeight = duration > 60 ? 0.08 : 0.3;
+  const blended = Math.round(ideal * (1 - densityWeight) + Math.min(max, unitBased) * densityWeight) + densityBonus;
   return Math.min(MAX_SHOT_COUNT, Math.max(min, Math.min(max + densityBonus, blended)));
 }
 

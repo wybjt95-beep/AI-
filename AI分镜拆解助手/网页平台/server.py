@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import io
 import json
+import math
 import mimetypes
 import os
 import re
@@ -1012,6 +1013,33 @@ def requested_shot_count(payload):
     return min(1200, max(1, value))
 
 
+def suggested_shot_count(payload, analysis=None, script=""):
+    project = payload.get("project") or {}
+    duration = int_duration(project)
+    analysis = analysis or payload.get("analysis") or {}
+    script = str(script or payload.get("script") or "")
+    units = script_units(script, 1200)
+    entity_count = sum(len(analysis.get(key) or []) for key in ("people", "locations", "props", "product"))
+    if duration <= 10:
+        min_count, max_count, ideal = 4, 8, round(duration * 0.6)
+    elif duration <= 15:
+        min_count, max_count, ideal = 6, 10, round(duration * 0.6)
+    elif duration <= 30:
+        min_count, max_count, ideal = 10, 18, round(duration * 0.45)
+    elif duration <= 60:
+        min_count, max_count, ideal = 18, 35, round(duration * 0.42)
+    elif duration <= 120:
+        min_count, max_count, ideal = round(duration / 2.8), round(duration / 1.6), round(duration / 2)
+    else:
+        min_count, max_count, ideal = round(duration / 6), round(duration / 2.5), round(duration / 4.5)
+    density_bonus = 2 if entity_count >= 8 else 1 if entity_count >= 5 else 0
+    text_density = math.ceil(len(script.strip()) / 80) if script.strip() else 0
+    unit_based = max(len(units), text_density)
+    density_weight = 0.08 if duration > 60 else 0.3
+    blended = round(ideal * (1 - density_weight) + min(max_count, unit_based) * density_weight) + density_bonus
+    return min(1200, max(min_count, min(max_count + density_bonus, blended)))
+
+
 def storyboard_bank():
     return [
         ["地点建立", "办公楼前建立镜头，年轻上班族推着新能源电动车进入画面，先交代地点、人物和产品关系。", "远景", "缓慢推近", "道路线、环境", "地点、人物、产品关系"],
@@ -1242,7 +1270,8 @@ def mock_split(payload, source="mock"):
     script = str(payload.get("script") or "")
     duration = int_duration(project)
     target_count = requested_shot_count(payload)
-    units = script_units(script, target_count or 8)
+    suggested_count = suggested_shot_count(payload, analysis, script)
+    units = script_units(script, target_count or suggested_count)
     if not units:
         units = [
             f"在{(analysis.get('locations') or ['主要场景'])[0]}建立人物和空间关系",
@@ -1250,7 +1279,7 @@ def mock_split(payload, source="mock"):
             "捕捉人物反应和情绪变化",
             "用留白或稳定构图完成收束",
         ]
-    total = target_count or (min(8, max(4, len(units))) if duration >= 15 else min(6, max(3, len(units))))
+    total = target_count or suggested_count
     while len(units) < total:
         units.append(units[-1])
     units = units[:total]
