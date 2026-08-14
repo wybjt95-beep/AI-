@@ -14,7 +14,7 @@
           <span class="doodle doodle-target"></span>
           <span class="doodle doodle-arrow"></span>
           <span class="doodle doodle-curve"></span>
-          <span class="brand-mark">镜</span>
+          <img class="brand-logo login-logo" src="./assets/ui/logo.png" alt="AI分镜拆解助手 logo" />
           <p class="eyebrow">Storyboard Lab</p>
           <h2>AI分镜拆解助手</h2>
           <p>帮助你快速拆解分镜脚本。</p>
@@ -24,6 +24,7 @@
             <span data-sub="提供专业分镜参考">分镜参考</span>
           </div>
           <div class="login-storyboard" aria-hidden="true">
+            <img src="./assets/ui/storyboard-strip.png" alt="" />
             <svg class="storyboard-illustration" viewBox="0 0 980 270" role="img" aria-label="分镜线稿插画">
               <g class="paper-lines">
                 <path d="M14 71 L820 0 L890 214 L77 262 Z" />
@@ -100,7 +101,7 @@
       <section class="platform-shell hidden" id="platformShell">
         <header class="topbar">
           <div class="brand">
-            <span class="brand-mark">镜</span>
+            <img class="brand-logo" src="./assets/ui/logo.png" alt="AI分镜拆解助手 logo" />
             <div>
               <p>Storyboard Lab</p>
               <h1>AI分镜拆解助手</h1>
@@ -120,22 +121,37 @@
           <span class="hero-doodle two"></span>
           <div>
             <p class="eyebrow">Storyboard Workspace</p>
-            <h2>结构化分镜解析与可视化生成工作台</h2>
+            <h2>AI 分镜工作台</h2>
             <p>面向脚本导入、镜头分析、分镜确认与参考图输出的一体化创作流程。</p>
           </div>
           <div class="hero-strip" aria-hidden="true">
-            <span>SC.01</span>
-            <span>SC.02</span>
-            <span>SC.03</span>
+            <img src="./assets/ui/storyboard-strip.png" alt="" />
           </div>
+          <img class="hero-clapper" src="./assets/ui/clapper.png" alt="" />
+          <img class="hero-book" src="./assets/ui/storybook.png" alt="" />
         </section>
 
         <section class="stage">
-          <span class="active">01 项目看板</span>
-          <span>02 导入脚本</span>
-          <span>03 剧本分析</span>
-          <span>04 分镜确认</span>
-          <span>05 生成图</span>
+          <span class="active">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+            <b>01 项目看板</b>
+          </span>
+          <span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2h8l4 4v16H6z"/><path d="M14 2v5h5M9 12h6M9 16h6"/></svg>
+            <b>02 导入脚本</b>
+          </span>
+          <span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M9 20V4M14 20v-7M19 20V7"/></svg>
+            <b>03 剧本分析</b>
+          </span>
+          <span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s4-6 10-6 10 6 10 6-4 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+            <b>04 分镜确认</b>
+          </span>
+          <span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m4 17 5-5 4 4 3-3 4 4"/></svg>
+            <b>05 生成分镜图</b>
+          </span>
         </section>
 
         <section class="panel" id="dashboard">
@@ -147,17 +163,19 @@
             <button class="primary" id="newProject">新建项目</button>
           </div>
           <div class="kanban" id="projectList">
-            <article>
+            <article class="project-card sample-card">
               <span class="tag">示例项目</span>
               <h4>30秒新能源电动车广告</h4>
               <p>用于演示从脚本导入、剧本分析、分镜确认到生成分镜图的最终流程。</p>
               <button class="text-btn" id="openSample">打开示例</button>
+              <img class="project-art" src="./assets/ui/car-shoot.png" alt="" />
             </article>
-            <article>
+            <article class="project-card blank-card">
               <span class="tag">新项目</span>
               <h4>从空白项目开始</h4>
               <p>先填写项目类型、时长、画幅、风格和目标平台，再导入脚本。</p>
               <button class="text-btn" id="openNew">选择新建</button>
+              <img class="project-art" src="./assets/ui/storybook.png" alt="" />
             </article>
           </div>
         </section>

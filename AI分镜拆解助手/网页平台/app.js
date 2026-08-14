@@ -411,29 +411,35 @@ function scheduleAutoSave() {
 function projectPreview(record) {
   const updated = record.updatedAt ? new Date(record.updatedAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "未记录";
   const count = Array.isArray(record.shots) ? record.shots.length : 0;
-  return `<article>
+  const art = count > 0 ? "./assets/ui/director-chair.png" : "./assets/ui/storybook.png";
+  return `<article class="project-card saved-card">
     <span class="tag">${esc(record.project?.type || "项目")}</span>
     <h4>${esc(record.project?.name || "未命名项目")}</h4>
     <p>${esc(record.project?.duration || 0)}秒 · ${esc(record.project?.aspect || "未填画幅")} · ${esc(record.project?.platform || "未填平台")} · ${count} 个镜头<br />更新时间：${esc(updated)}</p>
-    <button class="text-btn" data-open-project="${esc(record.id)}">继续编辑</button>
-    <button class="text-btn" data-delete-project="${esc(record.id)}">删除</button>
+    <div class="project-actions">
+      <button class="text-btn edit-btn" data-open-project="${esc(record.id)}">继续编辑</button>
+      <button class="text-btn delete-btn" data-delete-project="${esc(record.id)}">删除</button>
+    </div>
+    <img class="project-art" src="${art}" alt="" />
   </article>`;
 }
 
 function renderDashboard() {
   const saved = loadSavedProjects();
   els.projectList.innerHTML = `
-    <article>
+    <article class="project-card sample-card">
       <span class="tag">示例项目</span>
       <h4>30秒新能源电动车广告</h4>
       <p>用于演示从脚本导入、剧本分析、分镜确认到生成分镜图的最终流程。</p>
       <button class="text-btn" id="openSample">打开示例</button>
+      <img class="project-art" src="./assets/ui/car-shoot.png" alt="" />
     </article>
-    <article>
+    <article class="project-card blank-card">
       <span class="tag">新项目</span>
       <h4>从空白项目开始</h4>
       <p>先填写项目类型、时长、画幅、风格和目标平台，再导入脚本。</p>
       <button class="text-btn" id="openNew">选择新建</button>
+      <img class="project-art" src="./assets/ui/storybook.png" alt="" />
     </article>
     ${saved.map(projectPreview).join("")}
   `;
