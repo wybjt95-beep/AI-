@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AI分镜拆解助手 - 最终版</title>
-    <link rel="stylesheet" href="./styles.css?v=20260815-workspace-tabs" />
+    <link rel="stylesheet" href="./styles.css?v=20260815-project-guard" />
   </head>
   <body>
     <main class="app">
@@ -317,14 +317,16 @@
                 </section>
               </div>
               <p class="hint">整体风格和整体色调只约束写实版真实生图；线稿和火柴人仍按草图逻辑生成。</p>
-              <div class="list-toolbar" aria-label="分镜分页设置">
+              <div class="list-toolbar list-toolbar-top" aria-label="分镜每页显示设置">
                 <label><span>每页显示</span><select id="shotPageSize"><option value="4">4 个镜头</option><option value="6" selected>6 个镜头</option><option value="10">10 个镜头</option><option value="20">20 个镜头</option><option value="50">50 个镜头</option></select></label>
-                <div class="pager"><button class="ghost" id="shotPrev" type="button">上一页</button><span id="shotPageInfo">第 1 / 1 页</span><button class="ghost" id="shotNext" type="button">下一页</button></div>
               </div>
               <div id="shots" class="shot-list"><div class="empty">确认剧本分析后，这里会出现分镜卡片。</div></div>
               <div class="panel-actions-bottom image-generate-bar">
                 <label><span>分镜图类型</span><select id="boardStyle"><option value="">请选择分镜图风格</option><option>线稿</option><option>火柴人</option><option>写实版</option></select></label>
                 <button class="primary" id="generate">生成分镜图</button>
+              </div>
+              <div class="list-toolbar list-toolbar-bottom" aria-label="分镜翻页">
+                <div class="pager"><button class="ghost" id="shotPrev" type="button">上一页</button><span id="shotPageInfo">第 1 / 1 页</span><button class="ghost" id="shotNext" type="button">下一页</button></div>
               </div>
             </section>
 
@@ -332,11 +334,13 @@
               <div class="section-head">
                 <div><p class="eyebrow">Storyboard Frames</p><h3>分镜图</h3></div>
               </div>
-              <div class="list-toolbar" aria-label="分镜图分页设置">
+              <div class="list-toolbar list-toolbar-top" aria-label="分镜图每页显示设置">
                 <label><span>每页显示</span><select id="boardPageSize"><option value="4">4 张</option><option value="6" selected>6 张</option><option value="10">10 张</option><option value="20">20 张</option><option value="50">50 张</option></select></label>
-                <div class="pager"><button class="ghost" id="boardPrev" type="button">上一页</button><span id="boardPageInfo">第 1 / 1 页</span><button class="ghost" id="boardNext" type="button">下一页</button></div>
               </div>
               <div id="boards" class="board-grid"><div class="empty">确认分镜后点击生成分镜图。</div></div>
+              <div class="list-toolbar list-toolbar-bottom" aria-label="分镜图翻页">
+                <div class="pager"><button class="ghost" id="boardPrev" type="button">上一页</button><span id="boardPageInfo">第 1 / 1 页</span><button class="ghost" id="boardNext" type="button">下一页</button></div>
+              </div>
             </section>
 
             <section class="panel hidden" id="exportPanel" data-workbench-panel="export">
@@ -374,6 +378,6 @@
     </dialog>
 
     <div class="toast" id="toast"></div>
-    <script src="./app.js?v=20260815-workspace-tabs"></script>
+    <script src="./app.js?v=20260815-project-guard"></script>
   </body>
 </html>

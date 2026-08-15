@@ -625,16 +625,20 @@ function setScreen(screen) {
 function setWorkbenchPanel(panel, shouldSave = true) {
   const allowed = ["import", "analysis", "review", "boards", "export"];
   const next = allowed.includes(panel) ? panel : "import";
+  const projectReady = state.screen === "workbench" && Boolean(state.projectId);
   state.workbenchPanel = next;
   document.querySelectorAll("[data-workbench-panel]").forEach((section) => {
     section.classList.toggle("hidden", section.dataset.workbenchPanel !== next);
   });
   document.querySelectorAll("[data-workbench-step]").forEach((button) => {
+    const projectStep = allowed.includes(button.dataset.workbenchStep);
     const active = state.screen === "dashboard"
       ? button.dataset.workbenchStep === "dashboard"
       : state.screen === "setup"
         ? button.dataset.workbenchStep === "setup"
         : state.screen === "workbench" && button.dataset.workbenchStep === next;
+    button.disabled = projectStep && !projectReady;
+    button.title = button.disabled ? "请先新建项目、打开示例或继续编辑已有项目" : "";
     button.classList.toggle("active", active);
     button.toggleAttribute("aria-current", active);
   });
@@ -1991,9 +1995,9 @@ function bindEvents() {
       startNewProjectSetup();
       return;
     }
-    if (state.screen === "setup") {
-      state.projectId = state.projectId || newProjectId();
-      syncProjectFromForm();
+    if (["import", "analysis", "review", "boards", "export"].includes(step) && (state.screen !== "workbench" || !state.projectId)) {
+      showToast("请先新建项目、打开示例或继续编辑已有项目。");
+      return;
     }
     setScreen("workbench");
     setWorkbenchPanel(step);

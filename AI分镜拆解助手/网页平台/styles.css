@@ -2052,6 +2052,16 @@ dialog::backdrop {
   background: #fbfcfa;
 }
 
+.list-toolbar-top {
+  justify-content: flex-start;
+}
+
+.list-toolbar-bottom {
+  justify-content: flex-end;
+  margin-top: 14px;
+  margin-bottom: 0;
+}
+
 .list-toolbar label,
 .pager {
   display: flex;
@@ -2823,6 +2833,20 @@ h1 {
 
 .stage .active b {
   color: var(--accent-strong);
+}
+
+.stage button:disabled {
+  border-color: #e5e8e2;
+  background: #f8f9f7;
+  color: #a7ada3;
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: .72;
+}
+
+.stage button:disabled b,
+.stage button:disabled::after {
+  color: #a7ada3;
 }
 
 .panel,
