@@ -2242,6 +2242,242 @@ body {
   background: #fff;
 }
 
+/* Compact login layout: keep the account flow in one clear viewport. */
+.login-page {
+  min-height: calc(100vh - 40px);
+  grid-template-columns: minmax(520px, 1fr) minmax(390px, 470px);
+  gap: clamp(52px, 7vw, 112px);
+  align-items: center;
+  padding: clamp(32px, 5vh, 72px) clamp(16px, 3vw, 44px);
+}
+
+.login-copy {
+  min-height: 0;
+  justify-content: center;
+  padding: 0;
+  overflow: visible;
+}
+
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: clamp(46px, 7vh, 78px);
+}
+
+.login-brand .login-logo {
+  width: 84px;
+  height: 84px;
+  margin: 0;
+  border-radius: 18px;
+}
+
+.login-brand .eyebrow {
+  margin: 0 0 7px;
+  color: var(--ink);
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 3px;
+}
+
+.login-brand span {
+  display: block;
+  color: #8a8f85;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 1.4px;
+}
+
+.login-intro {
+  position: relative;
+  max-width: 760px;
+}
+
+.login-intro::before {
+  content: "";
+  position: absolute;
+  left: -24px;
+  top: 12px;
+  width: 5px;
+  height: 72%;
+  border-radius: 3px;
+  background: #8fc568;
+}
+
+.login-copy .login-intro h2 {
+  max-width: none;
+  margin: 0 0 22px;
+  font-size: clamp(58px, 6.4vw, 92px);
+  line-height: 1.04;
+  letter-spacing: 0;
+}
+
+.login-copy .login-intro > p {
+  margin: 0;
+  color: #565c52;
+  font-size: clamp(21px, 2vw, 30px);
+  font-weight: 550;
+  line-height: 1.5;
+}
+
+.login-copy .login-intro > p::after {
+  display: none;
+}
+
+.login-points {
+  width: min(700px, 100%);
+  gap: 12px;
+  margin-top: clamp(46px, 7vh, 72px);
+}
+
+.login-points span {
+  min-height: 92px;
+  align-content: center;
+  justify-items: start;
+  gap: 7px;
+  padding: 18px 16px 18px 60px;
+  border: 1px solid #e3e8df;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 10px 30px rgba(49, 62, 39, 0.05);
+  font-size: 16px;
+  text-align: left;
+}
+
+.login-points span::before {
+  top: 24px;
+  left: 17px;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background-color: #eef8e8;
+  background-size: 12px 1.5px, 15px 1.5px, 10px 1.5px;
+  background-position: 8px 8px, 8px 14px, 8px 20px;
+}
+
+.login-points span:nth-child(2)::before {
+  background-color: #fff3d9;
+  background-size: 1.5px 100%, 100% 1.5px;
+}
+
+.login-points span:nth-child(3)::before {
+  background-color: #efe9ff;
+  background-size: 5px 5px, 5px 5px, 100% 100%;
+  background-position: 7px 8px, 17px 16px, 0 0;
+}
+
+.login-points span::after {
+  font-size: 11px;
+}
+
+.login-auth {
+  align-self: center;
+}
+
+.login-card {
+  padding: 44px;
+}
+
+.login-storyboard,
+.storyboard-illustration,
+.login-copy > .doodle {
+  display: none;
+}
+
+@media (max-width: 1180px) {
+  .login-page {
+    grid-template-columns: minmax(0, 1fr) minmax(380px, 460px);
+    gap: 46px;
+  }
+
+  .login-copy .login-intro h2 {
+    font-size: clamp(48px, 6.7vw, 72px);
+  }
+
+  .login-points {
+    grid-template-columns: 1fr;
+    max-width: 420px;
+  }
+}
+
+@media (max-width: 900px) {
+  .login-page {
+    grid-template-columns: 1fr;
+    gap: 44px;
+    padding-block: 36px;
+  }
+
+  .login-copy {
+    align-items: center;
+    text-align: center;
+  }
+
+  .login-brand {
+    margin-bottom: 34px;
+  }
+
+  .login-intro::before {
+    left: 50%;
+    top: auto;
+    bottom: -18px;
+    width: 76px;
+    height: 4px;
+    transform: translateX(-50%);
+  }
+
+  .login-points {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    max-width: 680px;
+    margin-top: 52px;
+  }
+
+  .login-card {
+    width: min(540px, 100%);
+  }
+
+  .login-footer {
+    text-align: center;
+  }
+}
+
+@media (max-width: 620px) {
+  .login-page {
+    padding: 22px 4px 32px;
+  }
+
+  .login-brand {
+    gap: 12px;
+  }
+
+  .login-brand .login-logo {
+    width: 64px;
+    height: 64px;
+    border-radius: 14px;
+  }
+
+  .login-brand .eyebrow {
+    font-size: 16px;
+    letter-spacing: 2px;
+  }
+
+  .login-copy .login-intro h2 {
+    font-size: clamp(42px, 13vw, 58px);
+  }
+
+  .login-copy .login-intro > p {
+    font-size: 18px;
+  }
+
+  .login-points {
+    grid-template-columns: 1fr;
+  }
+
+  .login-card {
+    padding: 30px 22px;
+  }
+}
+
 .topbar {
   position: sticky;
   top: 0;
