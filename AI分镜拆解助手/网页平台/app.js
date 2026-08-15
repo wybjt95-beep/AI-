@@ -632,13 +632,18 @@ function setWorkbenchPanel(panel, shouldSave = true) {
   });
   document.querySelectorAll("[data-workbench-step]").forEach((button) => {
     const projectStep = allowed.includes(button.dataset.workbenchStep);
+    const setupStep = button.dataset.workbenchStep === "setup";
     const active = state.screen === "dashboard"
       ? button.dataset.workbenchStep === "dashboard"
       : state.screen === "setup"
         ? button.dataset.workbenchStep === "setup"
         : state.screen === "workbench" && button.dataset.workbenchStep === next;
-    button.disabled = projectStep && !projectReady;
-    button.title = button.disabled ? "请先新建项目、打开示例或继续编辑已有项目" : "";
+    button.disabled = setupStep || (projectStep && !projectReady);
+    button.title = setupStep
+      ? "请从项目看板中的新建项目按钮进入"
+      : button.disabled
+        ? "请先新建项目、打开示例或继续编辑已有项目"
+        : "";
     button.classList.toggle("active", active);
     button.toggleAttribute("aria-current", active);
   });
@@ -1991,8 +1996,7 @@ function bindEvents() {
       return;
     }
     if (step === "setup") {
-      saveCurrentProject();
-      startNewProjectSetup();
+      showToast("请从项目看板中的“新建项目”按钮进入。");
       return;
     }
     if (["import", "analysis", "review", "boards", "export"].includes(step) && (state.screen !== "workbench" || !state.projectId)) {

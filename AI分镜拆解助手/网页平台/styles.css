@@ -2849,6 +2849,18 @@ h1 {
   color: #a7ada3;
 }
 
+.stage button.active:disabled {
+  border-color: #a7d990;
+  background: linear-gradient(180deg, #f7fff2, #eff9e8);
+  color: var(--accent-strong);
+  opacity: 1;
+  cursor: default;
+}
+
+.stage button.active:disabled b {
+  color: var(--accent-strong);
+}
+
 .panel,
 .status {
   border: 1px solid #dfe5dc;
