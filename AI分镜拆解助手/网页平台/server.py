@@ -550,6 +550,28 @@ def user_api_config(user):
     }
 
 
+def ensure_ascii_visible(value, label):
+    text = str(value or "").strip()
+    if not text:
+        return text
+    try:
+        text.encode("latin-1")
+    except UnicodeEncodeError as exc:
+        raise ValueError(f"{label} 只能包含英文、数字和常见半角符号，不能包含中文、全角符号或说明文字。请重新粘贴正确内容。") from exc
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in text):
+        raise ValueError(f"{label} 不能包含换行、制表符或不可见控制字符。请重新粘贴正确内容。")
+    return text
+
+
+def validate_api_request_config(api_base, api_key, model):
+    api_base = ensure_ascii_visible(api_base, "API Base URL")
+    api_key = ensure_ascii_visible(api_key, "API Key")
+    model = ensure_ascii_visible(model, "模型名称")
+    if api_base and not re.match(r"^https?://", api_base):
+        raise ValueError("API Base URL 必须以 http:// 或 https:// 开头。")
+    return api_base, api_key, model
+
+
 def config_status(user=None):
     cfg = user_api_config(user) if user else {}
     api_key = cfg.get("apiKey", "")
@@ -593,12 +615,19 @@ def save_config(payload, user):
         raise ValueError("Temperature 必须是数字") from exc
     temperature = str(min(2, max(0, temperature_number)))
 
+    api_base_url = str(payload.get("apiBaseUrl") or existing.get("apiBaseUrl") or "https://api.openai.com/v1").strip()
+    text_model = str(payload.get("textModel") or existing.get("textModel") or "").strip()
+    image_model = str(payload.get("imageModel") or existing.get("imageModel") or "").strip()
+    if provider not in {"mock", "local", "demo"}:
+        api_base_url, api_key, text_model = validate_api_request_config(api_base_url, api_key, text_model)
+        image_model = ensure_ascii_visible(image_model, "分镜图模型名称")
+
     api_config = {
         "provider": provider,
-        "apiBaseUrl": str(payload.get("apiBaseUrl") or existing.get("apiBaseUrl") or "https://api.openai.com/v1").strip(),
+        "apiBaseUrl": api_base_url,
         "apiKeyEncrypted": encrypt_secret(api_key),
-        "textModel": str(payload.get("textModel") or existing.get("textModel") or "").strip(),
-        "imageModel": str(payload.get("imageModel") or existing.get("imageModel") or "").strip(),
+        "textModel": text_model,
+        "imageModel": image_model,
         "temperature": temperature,
         "updatedAt": now_ts(),
     }
@@ -1261,9 +1290,12 @@ def mock_analyze(payload, source="mock"):
         "dialogue": unique(quoted),
         "narration": unique(narration),
     }
+    look = recommend_visual_look(payload, analysis, script)
     return {
         "source": source,
         "analysis": analysis,
+        "overallVisualStyle": look["overallVisualStyle"],
+        "overallColorTone": look["overallColorTone"],
         "warning": "当前未配置真实模型，已使用后端本地演示剧本分析。",
     }
 
@@ -1383,6 +1415,8 @@ def build_analysis_prompt(payload):
     project_context = {
         **project,
         "projectStyleTags": tag_list(project.get("style"), 6),
+        "overallVisualStyle": tag_list(canonical_visual_style(payload), 3),
+        "overallColorTone": tag_list(canonical_color_tone(payload), 3),
         "globalNotes": payload.get("globalNotes") or "",
         "shotCount": payload.get("shotCount") or "未指定",
         "creativity": payload.get("creativity") or "",
@@ -1587,6 +1621,7 @@ def call_text_model_json(prompt, system_prompt, api_config):
     temperature = float(api_config.get("temperature") or 0.7)
     if not api_base or not api_key or not model:
         raise ValueError("未配置真实文本模型")
+    api_base, api_key, model = validate_api_request_config(api_base, api_key, model)
 
     request_body = {
         "model": model,
@@ -1834,6 +1869,7 @@ def generate_storyboard_images(payload, user=None, job_id=None):
     image_model = api_config.get("imageModel") or ""
     if provider in {"mock", "local", "demo"} or not api_base or not api_key or not image_model:
         raise ValueError("未配置真实图片模型")
+    api_base, api_key, image_model = validate_api_request_config(api_base, api_key, image_model)
 
     shots = payload.get("shots") or []
     if not isinstance(shots, list) or not shots:
@@ -2001,11 +2037,16 @@ def call_script_analysis(payload, api_config):
     analysis = normalize_analysis(parsed)
     if not any(analysis.values()):
         raise ValueError("模型返回的剧本分析为空")
-    return {
+    result = {
         "source": "ai",
         "model": model,
         "analysis": analysis,
     }
+    result.update(look_tags_from_parsed(parsed))
+    fallback_look = recommend_visual_look(payload, analysis, str(payload.get("script") or ""))
+    result.setdefault("overallVisualStyle", fallback_look["overallVisualStyle"])
+    result.setdefault("overallColorTone", fallback_look["overallColorTone"])
+    return result
 
 
 def analyze_script(payload, user=None):

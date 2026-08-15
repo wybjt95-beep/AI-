@@ -3,8 +3,8 @@ const STORAGE_KEY = "ai-storyboard-projects-v1";
 const DEFAULT_TONE = "自然真实色调、中低对比度、自然肤色色调";
 const DEFAULT_VISUAL_STYLE = "真实电影摄影风格、高端TVC广告风格、都市生活方式风格";
 const LOOK_FIELDS = {
-  visualStyle: { max: 3, empty: "拆解分镜后由 AI 推荐整体风格，也可以手动新增。" },
-  tone: { max: 3, empty: "拆解分镜后由 AI 推荐整体色调，也可以手动新增。" },
+  visualStyle: { max: 3, empty: "剧本分析后由 AI 推荐整体风格，也可以手动新增。" },
+  tone: { max: 3, empty: "剧本分析后由 AI 推荐整体色调，也可以手动新增。" },
 };
 const DEFAULT_PROJECT = {
   name: "30秒新能源电动车广告",
@@ -45,8 +45,8 @@ const els = {
   scriptInput: $("#scriptInput"), globalNotes: $("#globalNotes"), shotTarget: $("#shotTarget"), analysisDuration: $("#analysisDuration"), durationSuggestionHint: $("#durationSuggestionHint"),
   uploadBox: $("#uploadBox"), fileInput: $("#fileInput"), fileStatus: $("#fileStatus"),
   analysisGrid: $("#analysisGrid"), shots: $("#shots"), boards: $("#boards"),
-  shotPageSize: $("#shotPageSize"), shotPrev: $("#shotPrev"), shotNext: $("#shotNext"), shotPageInfo: $("#shotPageInfo"),
-  boardPageSize: $("#boardPageSize"), boardPrev: $("#boardPrev"), boardNext: $("#boardNext"), boardPageInfo: $("#boardPageInfo"),
+  shotPageSize: $("#shotPageSize"), shotPrev: $("#shotPrev"), shotNext: $("#shotNext"), shotPageInfo: $("#shotPageInfo"), shotTotalInfo: $("#shotTotalInfo"),
+  boardPageSize: $("#boardPageSize"), boardPrev: $("#boardPrev"), boardNext: $("#boardNext"), boardPageInfo: $("#boardPageInfo"), boardTotalInfo: $("#boardTotalInfo"),
   shotCount: $("#shotCount"), confirmedCount: $("#confirmedCount"), boardCount: $("#boardCount"), summary: $("#summary"), notice: $("#notice"),
   boardStyle: $("#boardStyle"), tone: $("#tone"), visualStyle: $("#visualStyle"), creativity: $("#creativity"),
   creativityText: $("#creativityText"), creativityValue: $("#creativityValue"), apiDialog: $("#apiDialog"), toast: $("#toast"),
@@ -967,10 +967,12 @@ function splitPayload() {
 }
 
 function analysisPayload() {
-	  return {
-	    script: els.scriptInput.value.trim(),
-	    project: state.project,
-	    creativity: els.creativity.value,
+  return {
+    script: els.scriptInput.value.trim(),
+    project: state.project,
+    overallVisualStyle: tagText(els.visualStyle.value, 3),
+    overallColorTone: tagText(els.tone.value, 3),
+    creativity: els.creativity.value,
     shotCount: els.shotTarget.value.trim(),
     globalNotes: els.globalNotes.value.trim(),
   };
@@ -1055,6 +1057,7 @@ function applyGeneratedLook(data) {
   syncChoiceButtons("tone");
   syncChoiceButtons("visualStyle");
   renderLookTagEditors();
+  return Boolean(generatedTone || generatedStyle);
 }
 
 async function splitStoryboard() {
@@ -1070,7 +1073,6 @@ async function splitStoryboard() {
 
   try {
     const data = await requestStoryboardSplit();
-    applyGeneratedLook(data);
     state.shots = data.shots.map(normalizeShot);
     if (data.warning) showToast(data.warning);
     else showToast(data.source === "ai" ? "AI 已完成分镜拆解，请逐条确认。" : "已使用后端演示模式拆解分镜。");
@@ -1305,6 +1307,7 @@ function updatePager(info, previous, next, page, totalPages, totalItems, unit) {
 function renderShots() {
   const view = pageSlice(state.shots, state.shotPage, state.shotPageSize);
   state.shotPage = view.page;
+  els.shotTotalInfo.textContent = `共 ${state.shots.length} 个镜头`;
   updatePager(els.shotPageInfo, els.shotPrev, els.shotNext, view.page, view.totalPages, state.shots.length, "个镜头");
   if (!state.shots.length) {
     els.shots.innerHTML = `<div class="empty">确认剧本分析后，这里会出现分镜卡片。</div>`;
@@ -1338,6 +1341,7 @@ function renderShots() {
         <button class="mini" data-action="confirm">确认此镜头</button>
         <button class="mini" data-action="unconfirm">取消确认</button>
         <button class="mini" data-action="revise">标记修改</button>
+        <button class="mini insert-shot" data-action="insert-after">在此镜头后新增</button>
         <button class="mini" data-action="delete">删除</button>
       </div>
     </article>`;
@@ -1555,6 +1559,7 @@ function renderBoards() {
   const confirmed = state.shots.filter((shot) => shot.status === "已确认");
   const view = pageSlice(confirmed, state.boardPage, state.boardPageSize);
   state.boardPage = view.page;
+  els.boardTotalInfo.textContent = `共 ${confirmed.length} 张分镜图`;
   updatePager(els.boardPageInfo, els.boardPrev, els.boardNext, view.page, view.totalPages, confirmed.length, "张");
   if (!state.boardsGenerated || !confirmed.length) {
     els.boards.innerHTML = `<div class="empty">确认分镜后点击生成分镜图。</div>`;
@@ -1837,6 +1842,7 @@ async function analyzeScript() {
   try {
     const data = await requestScriptAnalysis();
     state.detected = normalizeAnalysisData(data.analysis);
+    applyGeneratedLook(data);
     const suggestedDuration = applySuggestedProjectDuration(data.suggestedDuration);
     const count = applySuggestedShotCount(suggestedDuration);
     if (data.warning) showToast(`${data.warning} 建议时长 ${suggestedDuration} 秒、拆成 ${count} 个镜头。`);
@@ -1894,16 +1900,24 @@ function openSample() {
 }
 
 function addShot() {
-  const i = state.shots.length;
-  state.shots.push({
-    id: `${Date.now()}-${i}`, no: String(i + 1).padStart(2, "0"), type: "新增镜头", content: "请补充画面内容。",
+  insertShotAfter(state.shots.length - 1);
+}
+
+function insertShotAfter(index) {
+  const insertAt = Math.min(state.shots.length, Math.max(0, Number(index) + 1));
+  const shot = {
+    id: `${Date.now()}-${insertAt}`, no: "", type: "新增镜头", content: "请补充画面内容。",
     shotSize: "中景", duration: "3s", angle: "正面平视", camera: "固定镜头", blocking: "人物停留在画面中央，面向主要主体。", people: first(state.detected.people, "待补充人物"),
     location: first(state.detected.locations, "待补充地点"), props: first(state.detected.props, "待补充道具"),
     product: first(state.detected.product, "待补充产品"), time: first(state.detected.times, "待补充时间段"),
-    transition: i === 0 ? "开场建立" : "直切承接", dialogue: "无台词", narration: "无旁白", focus: "待补充", status: "待确认", refName: "", refData: "", refMeta: null,
-  });
-  state.shotPage = Math.ceil(state.shots.length / state.shotPageSize);
-  renderShots(); renderSummary(); saveCurrentProject();
+    transition: insertAt === 0 ? "开场建立" : "直切承接", dialogue: "无台词", narration: "无旁白", focus: "待补充", status: "待确认", refName: "", refData: "", refMeta: null,
+  };
+  state.shots.splice(insertAt, 0, shot);
+  state.shots.forEach((item, i) => item.no = String(i + 1).padStart(2, "0"));
+  state.shotPage = Math.floor(insertAt / state.shotPageSize) + 1;
+  state.boardsGenerated = false;
+  renderShots(); renderBoards(); saveCurrentProject();
+  showToast(insertAt === 0 ? "已新增第 1 个镜头。" : `已在第 ${insertAt} 个镜头后新增镜头。`);
 }
 
 function readAsDataUrl(file) {
@@ -2159,6 +2173,10 @@ function bindEvents() {
     if (action === "confirm") shot.status = "已确认";
     if (action === "unconfirm") shot.status = "待确认";
     if (action === "revise") shot.status = "需修改";
+    if (action === "insert-after") {
+      insertShotAfter(index);
+      return;
+    }
     if (action === "regen-shot") {
       regenerateShotFromFields(shot);
       showToast("已按当前字段更新这一镜头的画面内容。");

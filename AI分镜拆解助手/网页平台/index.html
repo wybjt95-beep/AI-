@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AI分镜拆解助手 - 最终版</title>
-    <link rel="stylesheet" href="./styles.css?v=20260815-project-guard-2" />
+    <link rel="stylesheet" href="./styles.css?v=20260815-analysis-look-pagination" />
   </head>
   <body>
     <main class="app">
@@ -273,21 +273,6 @@
               </div>
               <p class="hint">人物、场景、道具、产品可能有多个；台词和旁白可决定是否带入分镜。</p>
               <div class="analysis-grid" id="analysisGrid"><div class="empty">导入脚本后点击剧本分析。</div></div>
-              <div class="panel-actions-bottom">
-                <label class="analysis-duration-control"><span>建议时长（秒）</span><input id="analysisDuration" type="number" min="1" placeholder="剧本分析后自动建议，可修改" /><small id="durationSuggestionHint">根据脚本内容估算，不会在分析完成时直接覆盖原时长。</small></label>
-                <label class="shot-target-control"><span>建议镜头数量</span><input id="shotTarget" type="number" min="1" max="1200" placeholder="剧本分析后自动建议，可修改" /></label>
-                <button class="primary" id="split">确认分析并拆解分镜</button>
-              </div>
-            </section>
-
-            <section class="panel hidden" id="reviewPanel" data-workbench-panel="review">
-              <div class="section-head">
-                <div><p class="eyebrow">Storyboard Review</p><h3>分镜确认台</h3></div>
-                <div class="actions">
-                  <button class="ghost" id="addShot">新增镜头</button>
-                  <button class="ghost" id="confirmAll">全部确认</button>
-                </div>
-              </div>
               <div class="global-row look-editors">
                 <section class="look-field" data-look-editor="visualStyle">
                   <div class="look-title">
@@ -300,7 +285,7 @@
                     <input data-tag-input="visualStyle" placeholder="新增风格标签，例如：工业纪录片风格" />
                     <button class="mini" type="button" data-tag-add="visualStyle">新增</button>
                   </div>
-                  <p class="field-help">拆解分镜后会根据脚本、项目类型、创作要求和创意强度自动刷新推荐。</p>
+                  <p class="field-help">剧本分析后会根据脚本、项目类型、创作要求和创意强度自动刷新推荐。</p>
                 </section>
                 <section class="look-field" data-look-editor="tone">
                   <div class="look-title">
@@ -316,17 +301,32 @@
                   <p class="field-help">色调只描述色相、饱和度、明暗和冷暖关系，不写“高级”“舒服”等空泛词。</p>
                 </section>
               </div>
-              <p class="hint">整体风格和整体色调只约束写实版真实生图；线稿和火柴人仍按草图逻辑生成。</p>
+              <p class="hint">系统推荐可删除或新增；用户最终确认的整体风格和整体色调会传递给拆镜和写实版分镜图生成。</p>
+              <div class="panel-actions-bottom">
+                <label class="analysis-duration-control"><span>建议时长（秒）</span><input id="analysisDuration" type="number" min="1" placeholder="剧本分析后自动建议，可修改" /><small id="durationSuggestionHint">根据脚本内容估算，不会在分析完成时直接覆盖原时长。</small></label>
+                <label class="shot-target-control"><span>建议镜头数量</span><input id="shotTarget" type="number" min="1" max="1200" placeholder="剧本分析后自动建议，可修改" /></label>
+                <button class="primary" id="split">确认分析并拆解分镜</button>
+              </div>
+            </section>
+
+            <section class="panel hidden" id="reviewPanel" data-workbench-panel="review">
+              <div class="section-head">
+                <div><p class="eyebrow">Storyboard Review</p><h3>分镜确认台</h3></div>
+              </div>
               <div class="list-toolbar list-toolbar-top" aria-label="分镜每页显示设置">
-                <label><span>每页显示</span><select id="shotPageSize"><option value="4">4 个镜头</option><option value="6" selected>6 个镜头</option><option value="10">10 个镜头</option><option value="20">20 个镜头</option><option value="50">50 个镜头</option></select></label>
+                <label><span>每页显示</span><select id="shotPageSize"><option value="4">4 个镜头</option><option value="6" selected>6 个镜头</option><option value="10">10 个镜头</option><option value="20">20 个镜头</option><option value="50">50 个镜头</option></select><strong class="list-total" id="shotTotalInfo">共 0 个镜头</strong></label>
               </div>
               <div id="shots" class="shot-list"><div class="empty">确认剧本分析后，这里会出现分镜卡片。</div></div>
-              <div class="panel-actions-bottom image-generate-bar">
-                <label><span>分镜图类型</span><select id="boardStyle"><option value="">请选择分镜图风格</option><option>线稿</option><option>火柴人</option><option>写实版</option></select></label>
-                <button class="primary" id="generate">生成分镜图</button>
-              </div>
               <div class="list-toolbar list-toolbar-bottom" aria-label="分镜翻页">
                 <div class="pager"><button class="ghost" id="shotPrev" type="button">上一页</button><span id="shotPageInfo">第 1 / 1 页</span><button class="ghost" id="shotNext" type="button">下一页</button></div>
+              </div>
+              <div class="panel-actions-bottom image-generate-bar review-final-actions">
+                <div class="review-batch-actions">
+                  <button class="ghost" id="addShot">末尾新增镜头</button>
+                  <button class="ghost" id="confirmAll">全部确认</button>
+                </div>
+                <label><span>分镜图类型</span><select id="boardStyle"><option value="">请选择分镜图风格</option><option>线稿</option><option>火柴人</option><option>写实版</option></select></label>
+                <button class="primary" id="generate">生成分镜图</button>
               </div>
             </section>
 
@@ -335,7 +335,7 @@
                 <div><p class="eyebrow">Storyboard Frames</p><h3>分镜图</h3></div>
               </div>
               <div class="list-toolbar list-toolbar-top" aria-label="分镜图每页显示设置">
-                <label><span>每页显示</span><select id="boardPageSize"><option value="4">4 张</option><option value="6" selected>6 张</option><option value="10">10 张</option><option value="20">20 张</option><option value="50">50 张</option></select></label>
+                <label><span>每页显示</span><select id="boardPageSize"><option value="4">4 张</option><option value="6" selected>6 张</option><option value="10">10 张</option><option value="20">20 张</option><option value="50">50 张</option></select><strong class="list-total" id="boardTotalInfo">共 0 张分镜图</strong></label>
               </div>
               <div id="boards" class="board-grid"><div class="empty">确认分镜后点击生成分镜图。</div></div>
               <div class="list-toolbar list-toolbar-bottom" aria-label="分镜图翻页">
@@ -378,6 +378,6 @@
     </dialog>
 
     <div class="toast" id="toast"></div>
-    <script src="./app.js?v=20260815-project-guard-2"></script>
+    <script src="./app.js?v=20260815-analysis-look-pagination"></script>
   </body>
 </html>

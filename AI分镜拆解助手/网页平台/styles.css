@@ -2032,8 +2032,43 @@ dialog::backdrop {
   line-height: 1.45;
 }
 
+#analysisPanel .panel-actions-bottom {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(210px, 240px) minmax(220px, auto);
+  align-items: start;
+}
+
+#analysisPanel .analysis-duration-control,
+#analysisPanel .shot-target-control {
+  width: 100%;
+}
+
+#analysisPanel .panel-actions-bottom > .primary {
+  align-self: start;
+  margin-top: 25px;
+}
+
 .image-generate-bar label {
   width: min(260px, 100%);
+}
+
+.review-final-actions {
+  justify-content: flex-end;
+  padding-top: 16px;
+  border-top: 1px dashed var(--line-strong);
+}
+
+.review-batch-actions {
+  display: flex;
+  gap: 10px;
+  margin-right: auto;
+  flex-wrap: wrap;
+}
+
+.shot-side .insert-shot {
+  border-style: dashed;
+  border-color: var(--accent-strong);
+  color: var(--accent-strong);
 }
 
 .panel-actions-bottom .primary {
@@ -2074,6 +2109,15 @@ dialog::backdrop {
   color: var(--muted);
   font-size: 13px;
   font-weight: 800;
+  white-space: nowrap;
+}
+
+.list-total {
+  padding-left: 10px;
+  border-left: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 900;
   white-space: nowrap;
 }
 
@@ -3154,6 +3198,30 @@ select:focus {
 
   .list-toolbar {
     flex-direction: column;
+  }
+
+  #analysisPanel .panel-actions-bottom {
+    grid-template-columns: 1fr;
+  }
+
+  #analysisPanel .panel-actions-bottom > .primary {
+    width: 100%;
+    margin-top: 0;
+  }
+
+  .review-final-actions,
+  .review-batch-actions {
+    align-items: stretch;
+  }
+
+  .review-batch-actions,
+  .review-final-actions > label,
+  .review-final-actions > .primary {
+    width: 100%;
+  }
+
+  .review-batch-actions > button {
+    flex: 1 1 150px;
   }
 
   .pager {
