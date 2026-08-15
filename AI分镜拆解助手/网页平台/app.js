@@ -15,6 +15,7 @@ const DEFAULT_PROJECT = {
   platform: "抖音",
 };
 const MAX_SHOT_COUNT = 1200;
+const GUIDE_VERSION = "sample-tour-v1";
 const PROJECT_ART_RULES = [
   {
     id: "automotive",
@@ -103,6 +104,62 @@ const state = {
   boardPageSize: 6,
 };
 
+const guideState = {
+  active: false,
+  index: 0,
+  sampleLoaded: false,
+};
+
+const GUIDE_STEPS = [
+  {
+    screen: "dashboard",
+    target: ".sample-card",
+    title: "从示例项目开始",
+    text: "这个 30 秒新能源电动车广告包含完整演示数据。点击下一步会载入示例，不调用 API。",
+    next: "载入示例",
+  },
+  {
+    screen: "workbench",
+    panel: "import",
+    target: "#importPanel",
+    title: "1. 导入脚本",
+    text: "脚本文案和全局创作要求会一起影响后续分析、拆镜和分镜图生成。",
+    next: "查看剧本分析",
+  },
+  {
+    screen: "workbench",
+    panel: "analysis",
+    target: "#analysisPanel",
+    title: "2. 检查剧本分析",
+    text: "系统识别人物、场景、道具、产品和卖点，并给出建议时长、镜头数量、整体风格和色调。这些内容都可修改。",
+    next: "查看分镜确认",
+  },
+  {
+    screen: "workbench",
+    panel: "review",
+    target: "#reviewPanel",
+    title: "3. 逐镜检查与修改",
+    text: "每个镜头都可修改画面、景别、角度、运镜、人物调度和转场，也可在当前镜头前后新增镜头。",
+    next: "查看生图入口",
+  },
+  {
+    screen: "workbench",
+    panel: "review",
+    target: ".review-final-actions",
+    title: "4. 确认后生成分镜图",
+    text: "先确认需要生图的镜头，再选择线稿、火柴人或写实版。只有这一步会使用你配置的图片 API。",
+    next: "查看导出预览",
+  },
+  {
+    screen: "workbench",
+    panel: "export",
+    target: "#exportPanel",
+    title: "5. 检查后导出",
+    text: "导出前会检查项目信息、镜头状态、总时长和分镜图。确认当前版本后，可导出 Excel、Word 或 PPT。",
+    next: "完成引导",
+  },
+];
+
 const $ = (id) => document.querySelector(id);
 const els = {
   loginPage: $("#loginPage"), platformShell: $("#platformShell"),
@@ -117,6 +174,10 @@ const els = {
   boardPageSize: $("#boardPageSize"), boardPrev: $("#boardPrev"), boardNext: $("#boardNext"), boardPageInfo: $("#boardPageInfo"), boardTotalInfo: $("#boardTotalInfo"),
   shotCount: $("#shotCount"), confirmedCount: $("#confirmedCount"), boardCount: $("#boardCount"), summary: $("#summary"), notice: $("#notice"),
   boardStyle: $("#boardStyle"), tone: $("#tone"), visualStyle: $("#visualStyle"), creativity: $("#creativity"),
+  exportSummary: $("#exportSummary"), exportChecks: $("#exportChecks"), exportPreviewRows: $("#exportPreviewRows"),
+  exportPreviewCount: $("#exportPreviewCount"), exportReadyState: $("#exportReadyState"), exportConfirm: $("#exportConfirm"),
+  guideTour: $("#guideTour"), guideTitle: $("#guideTitle"), guideText: $("#guideText"), guideStepText: $("#guideStepText"),
+  guideBack: $("#guideBack"), guideNext: $("#guideNext"), guideSkip: $("#guideSkip"),
   creativityText: $("#creativityText"), creativityValue: $("#creativityValue"), apiDialog: $("#apiDialog"), toast: $("#toast"),
   apiProvider: $("#apiProvider"), apiBaseUrl: $("#apiBaseUrl"), apiKey: $("#apiKey"), apiTextModel: $("#apiTextModel"),
   apiImageModel: $("#apiImageModel"), apiTemperature: $("#apiTemperature"), apiStatus: $("#apiStatus"),
@@ -601,7 +662,10 @@ function renderDashboard() {
       <span class="tag">示例项目</span>
       <h4>30秒新能源电动车广告</h4>
       <p>用于演示从脚本导入、剧本分析、分镜确认到生成分镜图的最终流程。</p>
-      <button class="text-btn" id="openSample">打开示例</button>
+      <div class="project-actions sample-actions">
+        <button class="text-btn" id="openSample">打开示例</button>
+        <button class="text-btn guide-btn" id="startSampleGuide">新手引导</button>
+      </div>
       <img class="project-art" src="./assets/ui/car-shoot.png" alt="" />
     </article>
     <article class="project-card blank-card">
@@ -707,6 +771,7 @@ function startNewProjectSetup() {
 
 function setScreen(screen) {
   const nextScreen = screen !== "login" && !state.currentUser ? "login" : screen;
+  if (nextScreen === "login" && guideState.active) finishGuide(false);
   state.screen = nextScreen;
   const isLogin = nextScreen === "login";
   els.loginPage.classList.toggle("hidden", !isLogin);
@@ -743,6 +808,7 @@ function setWorkbenchPanel(panel, shouldSave = true) {
     button.classList.toggle("active", active);
     button.toggleAttribute("aria-current", active);
   });
+  if (next === "export" && projectReady) renderExportPreview();
   if (shouldSave && state.screen === "workbench") scheduleAutoSave();
 }
 
@@ -1289,6 +1355,7 @@ async function loadSession() {
     if (state.currentUser) {
       await loadRemoteProjects();
       setScreen("dashboard");
+      maybeShowFirstUseGuide();
     } else {
       setScreen("login");
     }
@@ -1333,6 +1400,7 @@ async function submitAuth(mode) {
     updateAuthUi(data.config);
     await loadRemoteProjects();
     setScreen("dashboard");
+    maybeShowFirstUseGuide();
     if (hasProjectContent()) saveCurrentProject();
     showToast("登录成功。");
   } catch (error) {
@@ -1351,6 +1419,7 @@ async function logout() {
   } catch (error) {
     console.warn(error);
   }
+  finishGuide(false);
   state.currentUser = null;
   resetWorkspace();
   els.authName.value = "";
@@ -1718,6 +1787,77 @@ function renderBoards() {
   renderSummary();
 }
 
+function durationSeconds(value) {
+  const match = String(value || "").match(/[\d.]+/);
+  return match ? Number(match[0]) || 0 : 0;
+}
+
+function exportCheckItem(status, title, detail) {
+  const label = status === "ok" ? "通过" : status === "error" ? "缺失" : "提醒";
+  return `<article class="export-check-item ${status}"><span>${label}</span><div><strong>${esc(title)}</strong><p>${esc(detail)}</p></div></article>`;
+}
+
+function updateExportButtons() {
+  const enabled = Boolean(els.exportConfirm?.checked) && state.shots.length > 0;
+  document.querySelectorAll("[data-export]").forEach((button) => {
+    button.disabled = !enabled;
+  });
+}
+
+function renderExportPreview() {
+  if (!els.exportSummary) return;
+  syncProjectFromForm();
+  const shots = state.shots;
+  const confirmed = shots.filter((shot) => shot.status === "已确认").length;
+  const revise = shots.filter((shot) => shot.status === "需修改").length;
+  const pending = shots.length - confirmed - revise;
+  const boardImages = shots.filter((shot) => Boolean(shot.boardImage)).length;
+  const shotDuration = shots.reduce((sum, shot) => sum + durationSeconds(shot.duration), 0);
+  const projectDuration = Number(state.project.duration) || 0;
+  const durationGap = Math.abs(shotDuration - projectDuration);
+  const scriptReady = Boolean(els.scriptInput.value.trim());
+  const projectFields = [state.project.name, state.project.type, state.project.duration, state.project.aspect, state.project.style, state.project.platform];
+  const projectReady = projectFields.every((value) => value !== "" && value !== null && value !== undefined && !String(value).includes("未填写"));
+
+  els.exportSummary.innerHTML = [
+    ["镜头", shots.length, "当前分镜总数"],
+    ["已确认", confirmed, `${pending} 待确认 · ${revise} 需修改`],
+    ["分镜图", boardImages, `${Math.max(0, shots.length - boardImages)} 张未生成`],
+    ["分镜时长", `${shotDuration}s`, `项目时长 ${projectDuration}s`],
+  ].map(([label, value, detail]) => `<article><span>${label}</span><strong>${value}</strong><small>${detail}</small></article>`).join("");
+
+  const checks = [
+    exportCheckItem(projectReady ? "ok" : "error", "项目信息", projectReady ? "名称、类型、时长、画幅、风格和平台已填写。" : "项目信息存在空项，建议返回工作台补充。"),
+    exportCheckItem(scriptReady ? "ok" : "error", "脚本文案", scriptReady ? "导出文件将包含当前脚本。" : "当前没有脚本内容。"),
+    exportCheckItem(shots.length ? "ok" : "error", "分镜拆解", shots.length ? `已拆解 ${shots.length} 个镜头。` : "还没有拆解分镜，暂时无法导出。"),
+    exportCheckItem(shots.length && confirmed === shots.length ? "ok" : "warn", "分镜状态", shots.length ? (confirmed === shots.length ? "所有镜头均已确认。" : `${pending} 个待确认，${revise} 个需修改。`) : "暂无镜头可检查。"),
+    exportCheckItem(shots.length && boardImages === shots.length ? "ok" : "warn", "分镜图", shots.length ? (boardImages === shots.length ? "每个镜头都已包含分镜图。" : `${Math.max(0, shots.length - boardImages)} 个镜头没有分镜图，导出时会保留文字内容。`) : "暂无分镜图可检查。"),
+    exportCheckItem(shots.length && durationGap <= 1 ? "ok" : "warn", "时长校验", shots.length ? (durationGap <= 1 ? "分镜时长与项目时长基本一致。" : `分镜合计 ${shotDuration} 秒，与项目时长相差 ${durationGap} 秒。`) : "暂无分镜时长可校验。"),
+  ];
+  els.exportChecks.innerHTML = checks.join("");
+
+  const previewShots = shots.slice(0, 6);
+  els.exportPreviewCount.textContent = shots.length ? `展示前 ${previewShots.length} / 共 ${shots.length} 个镜头` : "暂无分镜";
+  els.exportPreviewRows.innerHTML = previewShots.length
+    ? previewShots.map((shot) => `<tr>
+        <td><strong>${esc(shot.no)}</strong></td>
+        <td>${esc(compact(shot.content, 42))}</td>
+        <td>${esc(shot.shotSize)}</td>
+        <td>${esc(shot.duration)}</td>
+        <td><span class="preview-status ${shot.status === "已确认" ? "ok" : shot.status === "需修改" ? "revise" : ""}">${esc(shot.status)}</span></td>
+        <td>${shot.boardImage ? `<img src="${esc(shot.boardImage)}" alt="${esc(shot.no)} 分镜图" />` : `<span class="preview-no-image">未生成</span>`}</td>
+      </tr>`).join("")
+    : `<tr><td colspan="6">还没有可预览的分镜。</td></tr>`;
+
+  const blockingErrors = !projectReady || !scriptReady || !shots.length;
+  const warnings = pending + revise + Math.max(0, shots.length - boardImages) + (durationGap > 1 ? 1 : 0);
+  els.exportReadyState.textContent = blockingErrors ? "信息不完整" : warnings ? `有 ${warnings} 项提醒` : "检查通过";
+  els.exportReadyState.className = `export-ready-state ${blockingErrors ? "error" : warnings ? "warn" : "ok"}`;
+  els.exportConfirm.checked = false;
+  els.exportConfirm.disabled = !shots.length;
+  updateExportButtons();
+}
+
 function imagePayload(confirmed) {
   const overallColorTone = tagText(els.tone.value, 3);
   const overallVisualStyle = tagText(els.visualStyle.value, 3);
@@ -1815,6 +1955,7 @@ function filenameFromDisposition(header, fallback) {
 async function exportProject(format, button) {
   if (!canUseBackend()) return showToast("请使用打开本地网页.command 或线上地址导出文件。");
   if (!state.shots.length) return showToast("请先拆解分镜，再导出文件。");
+  if (!els.exportConfirm?.checked) return showToast("请先检查导出预览并勾选确认。");
   syncProjectFromForm();
   const buttonText = button.textContent;
   button.disabled = true;
@@ -1844,7 +1985,7 @@ async function exportProject(format, button) {
     console.warn(error);
     showToast(error.message || "导出失败。");
   } finally {
-    button.disabled = false;
+    button.disabled = !els.exportConfirm?.checked;
     button.textContent = buttonText;
   }
 }
@@ -1997,8 +2138,10 @@ async function analyzeScript() {
   analyzeButton.textContent = buttonText;
 }
 
-function openSample() {
-  state.projectId = newProjectId();
+function openSample(options = {}) {
+  const guided = options?.guided === true;
+  const silent = options?.silent === true;
+  state.projectId = guided ? `sample-guide-${state.currentUser?.id || state.currentUser?.email || "user"}` : newProjectId();
   applyProject({ ...DEFAULT_PROJECT });
   els.scriptInput.value = sampleScript;
   els.globalNotes.value = "";
@@ -2011,7 +2154,13 @@ function openSample() {
 	  syncAllChoiceButtons();
 	  renderLookTagEditors();
 	  state.detected = detectTerms(sampleScript);
-  state.shots = [];
+  if (guided) {
+    els.analysisDuration.value = "30";
+    els.shotTarget.value = "8";
+    state.shots = localStoryboardShots();
+  } else {
+    state.shots = [];
+  }
   state.boardsGenerated = false;
   state.shotPage = 1;
   state.boardPage = 1;
@@ -2021,7 +2170,95 @@ function openSample() {
   renderBoards();
   setScreen("workbench");
   saveCurrentProject();
-  showToast("已载入示例项目。");
+  if (!silent) showToast("已载入示例项目。");
+}
+
+function guideStorageKey() {
+  const user = state.currentUser?.id || state.currentUser?.email || "guest";
+  return `ai-storyboard-guide:${GUIDE_VERSION}:${user}`;
+}
+
+function clearGuideFocus() {
+  document.querySelectorAll(".tour-focus").forEach((element) => element.classList.remove("tour-focus"));
+}
+
+function finishGuide(markSeen = true) {
+  clearGuideFocus();
+  guideState.active = false;
+  els.guideTour?.classList.add("hidden");
+  if (!markSeen || !state.currentUser) return;
+  try {
+    localStorage.setItem(guideStorageKey(), "done");
+  } catch (error) {
+    console.warn(error);
+  }
+}
+
+function prepareGuideSample() {
+  if (guideState.sampleLoaded) return;
+  openSample({ guided: true, silent: true });
+  guideState.sampleLoaded = true;
+}
+
+function showGuideStep() {
+  const step = GUIDE_STEPS[guideState.index];
+  if (!step) return finishGuide(true);
+  if (step.screen === "dashboard") {
+    setScreen("dashboard");
+  } else {
+    prepareGuideSample();
+    setScreen("workbench");
+    setWorkbenchPanel(step.panel, false);
+  }
+  els.guideTour.classList.remove("hidden");
+  els.guideStepText.textContent = `第 ${guideState.index + 1} / ${GUIDE_STEPS.length} 步`;
+  els.guideTitle.textContent = step.title;
+  els.guideText.textContent = step.text;
+  els.guideBack.disabled = guideState.index === 0;
+  els.guideNext.textContent = step.next;
+  requestAnimationFrame(() => {
+    clearGuideFocus();
+    const target = document.querySelector(step.target);
+    if (!target) return;
+    target.classList.add("tour-focus");
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+  });
+}
+
+function startSampleGuide() {
+  guideState.active = true;
+  guideState.index = 0;
+  guideState.sampleLoaded = false;
+  showGuideStep();
+}
+
+function nextGuideStep() {
+  if (guideState.index >= GUIDE_STEPS.length - 1) {
+    finishGuide(true);
+    showToast("新手引导已完成，可以继续使用示例项目练习。");
+    return;
+  }
+  if (guideState.index === 0) prepareGuideSample();
+  guideState.index += 1;
+  showGuideStep();
+}
+
+function previousGuideStep() {
+  if (guideState.index <= 0) return;
+  guideState.index -= 1;
+  showGuideStep();
+}
+
+function maybeShowFirstUseGuide() {
+  if (!state.currentUser) return;
+  try {
+    if (localStorage.getItem(guideStorageKey()) === "done") return;
+  } catch (error) {
+    console.warn(error);
+  }
+  window.setTimeout(() => {
+    if (state.currentUser && state.screen === "dashboard" && !guideState.active) startSampleGuide();
+  }, 450);
 }
 
 function addShot() {
@@ -2178,8 +2415,16 @@ function bindEvents() {
   els.logoutBtn.addEventListener("click", logout);
   $("#apiSave").addEventListener("click", saveApiConfig);
   document.querySelectorAll("[data-export]").forEach((btn) => btn.addEventListener("click", () => exportProject(btn.dataset.export, btn)));
+  els.exportConfirm.addEventListener("change", updateExportButtons);
+  els.guideNext.addEventListener("click", nextGuideStep);
+  els.guideBack.addEventListener("click", previousGuideStep);
+  els.guideSkip.addEventListener("click", () => {
+    finishGuide(true);
+    showToast("已跳过新手引导，可从示例项目重新打开。");
+  });
   els.dashboard.addEventListener("click", async (event) => {
     if (event.target.id === "openSample") return openSample();
+    if (event.target.id === "startSampleGuide") return startSampleGuide();
     if (event.target.id === "openNew") return startNewProjectSetup();
     const openId = event.target.dataset.openProject;
     if (openId) {

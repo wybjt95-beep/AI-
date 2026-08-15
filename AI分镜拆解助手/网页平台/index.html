@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AI分镜拆解助手 - 最终版</title>
-    <link rel="stylesheet" href="./styles.css?v=20260815-project-artwork" />
+    <link rel="stylesheet" href="./styles.css?v=20260815-guide-export-preview" />
   </head>
   <body>
     <main class="app">
@@ -126,7 +126,10 @@
               <span class="tag">示例项目</span>
               <h4>30秒新能源电动车广告</h4>
               <p>用于演示从脚本导入、剧本分析、分镜确认到生成分镜图的最终流程。</p>
-              <button class="text-btn" id="openSample">打开示例</button>
+              <div class="project-actions sample-actions">
+                <button class="text-btn" id="openSample">打开示例</button>
+                <button class="text-btn guide-btn" id="startSampleGuide">新手引导</button>
+              </div>
               <img class="project-art" src="./assets/ui/car-shoot.png" alt="" />
             </article>
             <article class="project-card blank-card">
@@ -348,16 +351,54 @@
                 <div><p class="eyebrow">Export Files</p><h3>导出文件</h3></div>
               </div>
               <p class="hint">导出当前项目的项目信息、剧本分析、分镜确认表和分镜图生成记录。API Key 不会写入导出文件。</p>
+              <section class="export-preview" aria-labelledby="exportPreviewTitle">
+                <div class="export-preview-head">
+                  <div><p class="eyebrow">Delivery Check</p><h4 id="exportPreviewTitle">导出前预览</h4></div>
+                  <span class="export-ready-state" id="exportReadyState">待检查</span>
+                </div>
+                <div class="export-summary-grid" id="exportSummary"></div>
+                <div class="export-preview-layout">
+                  <div>
+                    <h5>交付检查</h5>
+                    <div class="export-check-list" id="exportChecks"></div>
+                  </div>
+                  <div>
+                    <h5>文件内容</h5>
+                    <div class="export-format-list">
+                      <article><strong>Excel</strong><span>结构化分镜表，便于继续编辑与协作。</span></article>
+                      <article><strong>Word</strong><span>项目概要、剧本分析、分镜文字与分镜图。</span></article>
+                      <article><strong>PPT</strong><span>封面、项目信息和逐镜展示，适合讲解。</span></article>
+                    </div>
+                  </div>
+                </div>
+                <div class="export-shot-preview">
+                  <div class="export-shot-preview-head"><h5>分镜摘要</h5><span id="exportPreviewCount">暂无分镜</span></div>
+                  <div class="export-preview-table-wrap">
+                    <table class="export-preview-table">
+                      <thead><tr><th>镜号</th><th>画面内容</th><th>景别</th><th>时长</th><th>状态</th><th>分镜图</th></tr></thead>
+                      <tbody id="exportPreviewRows"><tr><td colspan="6">还没有可预览的分镜。</td></tr></tbody>
+                    </table>
+                  </div>
+                </div>
+                <label class="export-confirm"><input id="exportConfirm" type="checkbox" /><span>我已检查项目信息、分镜状态和分镜图，确认导出当前版本。</span></label>
+              </section>
               <div class="export-actions">
-                <button class="ghost" data-export="xlsx">导出 Excel</button>
-                <button class="ghost" data-export="docx">导出 Word</button>
-                <button class="ghost" data-export="pptx">导出 PPT</button>
+                <button class="ghost" data-export="xlsx" disabled>导出 Excel</button>
+                <button class="ghost" data-export="docx" disabled>导出 Word</button>
+                <button class="ghost" data-export="pptx" disabled>导出 PPT</button>
               </div>
             </section>
           </div>
         </section>
       </section>
     </main>
+
+    <aside class="guide-tour hidden" id="guideTour" role="dialog" aria-live="polite" aria-labelledby="guideTitle">
+      <div class="guide-progress"><span id="guideStepText">第 1 / 6 步</span><button id="guideSkip" type="button">跳过引导</button></div>
+      <h3 id="guideTitle">从示例项目开始</h3>
+      <p id="guideText">用一个 30 秒新能源电动车广告，完整了解平台流程。</p>
+      <div class="guide-actions"><button class="ghost" id="guideBack" type="button">上一步</button><button class="primary" id="guideNext" type="button">载入示例</button></div>
+    </aside>
 
     <dialog id="apiDialog">
       <form method="dialog" class="api-box" id="apiForm">
@@ -378,6 +419,6 @@
     </dialog>
 
     <div class="toast" id="toast"></div>
-    <script src="./app.js?v=20260815-project-artwork"></script>
+    <script src="./app.js?v=20260815-guide-export-preview"></script>
   </body>
 </html>
