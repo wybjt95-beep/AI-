@@ -1317,8 +1317,20 @@ function renderShots() {
     const i = view.start + localIndex;
     const cls = shot.status === "已确认" ? "ok" : shot.status === "需修改" ? "revise" : "";
     return `<article class="shot-card" data-index="${i}">
-      <div class="shot-no">${shot.no}</div>
+      <header class="shot-card-header">
+        <div class="shot-identity">
+          <div class="shot-no">${shot.no}</div>
+          <div><strong>${esc(shot.type)}</strong><span class="status-pill ${cls}">${shot.status}</span></div>
+        </div>
+        <div class="shot-structure-actions" aria-label="镜头位置与删除">
+          <span>调整镜头位置</span>
+          <button class="mini" data-action="insert-before" title="在当前镜头前插入一个新镜头">在此镜头前新增</button>
+          <button class="mini" data-action="insert-after" title="在当前镜头后插入一个新镜头">在此镜头后新增</button>
+          <button class="mini danger-mini" data-action="delete">删除镜头</button>
+        </div>
+      </header>
       <div class="shot-main">
+        <div class="shot-content-head"><span>画面内容</span><button class="mini rewrite-shot" data-action="regen-shot" title="根据下方已修改的人物、场景、道具、景别和运镜等字段，重新整理画面内容">根据当前字段重写画面描述</button></div>
         <textarea data-field="content">${esc(shot.content)}</textarea>
         <div class="shot-layout">
           <div class="shot-meta-row">${input("shotSize", shot.shotSize, "景别")}${input("duration", shot.duration, "时长")}${input("angle", shot.angle, "角度")}${input("camera", shot.camera, "运镜")}</div>
@@ -1335,17 +1347,34 @@ function renderShots() {
           ${referenceRow(shot, i)}
         </div>
       </div>
-      <div class="shot-side">
-        <span class="status-pill ${cls}">${shot.status}</span>
-        <button class="mini" data-action="regen-shot">按字段更新描述</button>
-        <button class="mini" data-action="confirm">确认此镜头</button>
-        <button class="mini" data-action="unconfirm">取消确认</button>
-        <button class="mini" data-action="revise">标记修改</button>
-        <button class="mini insert-shot" data-action="insert-after">在此镜头后新增</button>
-        <button class="mini" data-action="delete">删除</button>
-      </div>
+      <footer class="shot-review-bar">
+        <div class="shot-review-copy"><strong>镜头状态</strong><span>选择“待确认”可取消修改标记</span></div>
+        <div class="status-segmented" role="group" aria-label="设置镜头状态">
+          <button type="button" class="${shot.status === "待确认" ? "active" : ""}" data-action="status-pending" aria-pressed="${shot.status === "待确认"}">待确认</button>
+          <button type="button" class="confirmed ${shot.status === "已确认" ? "active" : ""}" data-action="status-confirmed" aria-pressed="${shot.status === "已确认"}">已确认</button>
+          <button type="button" class="revise ${shot.status === "需修改" ? "active" : ""}" data-action="status-revise" aria-pressed="${shot.status === "需修改"}">需修改</button>
+        </div>
+      </footer>
     </article>`;
   }).join("");
+}
+
+function updateShotStatusUi(card, status) {
+  const pill = card?.querySelector(".status-pill");
+  if (pill) {
+    pill.textContent = status;
+    pill.className = `status-pill ${status === "已确认" ? "ok" : status === "需修改" ? "revise" : ""}`.trim();
+  }
+  const actionForStatus = {
+    "待确认": "status-pending",
+    "已确认": "status-confirmed",
+    "需修改": "status-revise",
+  };
+  card?.querySelectorAll(".status-segmented button").forEach((button) => {
+    const active = button.dataset.action === actionForStatus[status];
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
 }
 
 function compact(value, max = 18) {
@@ -1900,11 +1929,11 @@ function openSample() {
 }
 
 function addShot() {
-  insertShotAfter(state.shots.length - 1);
+  insertShotAt(state.shots.length, "已在分镜列表末尾新增镜头。");
 }
 
-function insertShotAfter(index) {
-  const insertAt = Math.min(state.shots.length, Math.max(0, Number(index) + 1));
+function insertShotAt(index, message) {
+  const insertAt = Math.min(state.shots.length, Math.max(0, Number(index)));
   const shot = {
     id: `${Date.now()}-${insertAt}`, no: "", type: "新增镜头", content: "请补充画面内容。",
     shotSize: "中景", duration: "3s", angle: "正面平视", camera: "固定镜头", blocking: "人物停留在画面中央，面向主要主体。", people: first(state.detected.people, "待补充人物"),
@@ -1917,7 +1946,15 @@ function insertShotAfter(index) {
   state.shotPage = Math.floor(insertAt / state.shotPageSize) + 1;
   state.boardsGenerated = false;
   renderShots(); renderBoards(); saveCurrentProject();
-  showToast(insertAt === 0 ? "已新增第 1 个镜头。" : `已在第 ${insertAt} 个镜头后新增镜头。`);
+  showToast(message || "已新增镜头。");
+}
+
+function insertShotBefore(index) {
+  insertShotAt(index, `已在原第 ${Number(index) + 1} 个镜头前插入新镜头。`);
+}
+
+function insertShotAfter(index) {
+  insertShotAt(Number(index) + 1, `已在第 ${Number(index) + 1} 个镜头后插入新镜头。`);
 }
 
 function readAsDataUrl(file) {
@@ -2152,6 +2189,7 @@ function bindEvents() {
     const shot = state.shots[Number(card.dataset.index)];
     shot[field] = event.target.value;
     if (shot.status === "已确认") shot.status = "待确认";
+    updateShotStatusUi(card, shot.status);
     state.boardsGenerated = false;
     renderSummary();
     scheduleAutoSave();
@@ -2164,22 +2202,27 @@ function bindEvents() {
       const field = chip.dataset.chip;
       const values = parseList(shot[field]);
       shot[field] = (values.includes(chip.dataset.value) ? values.filter((x) => x !== chip.dataset.value) : [...values, chip.dataset.value]).join("、");
+      if (shot.status === "已确认") shot.status = "待确认";
       renderShots(); saveCurrentProject(); return;
     }
     const action = event.target.dataset.action;
     if (!action) return;
     const index = Number(event.target.closest(".shot-card").dataset.index);
     const shot = state.shots[index];
-    if (action === "confirm") shot.status = "已确认";
-    if (action === "unconfirm") shot.status = "待确认";
-    if (action === "revise") shot.status = "需修改";
+    if (action === "status-pending") shot.status = "待确认";
+    if (action === "status-confirmed") shot.status = "已确认";
+    if (action === "status-revise") shot.status = "需修改";
+    if (action === "insert-before") {
+      insertShotBefore(index);
+      return;
+    }
     if (action === "insert-after") {
       insertShotAfter(index);
       return;
     }
     if (action === "regen-shot") {
       regenerateShotFromFields(shot);
-      showToast("已按当前字段更新这一镜头的画面内容。");
+      showToast("已根据当前镜头字段重写画面描述。");
     }
     if (action === "remove-ref") {
       shot.refName = "";
@@ -2193,6 +2236,7 @@ function bindEvents() {
       showToast("已删除这个镜头的参考图。");
     }
     if (action === "delete") {
+      if (!confirm(`确定删除第 ${index + 1} 个镜头吗？`)) return;
       state.shots.splice(index, 1);
       state.shots.forEach((item, i) => item.no = String(i + 1).padStart(2, "0"));
     }

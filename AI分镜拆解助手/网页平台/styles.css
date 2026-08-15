@@ -1284,12 +1284,62 @@ textarea {
 
 .shot-card {
   display: grid;
-  grid-template-columns: 72px minmax(0,1fr) 168px;
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
   padding: 16px;
   border: 1.5px solid var(--line-strong);
   border-radius: 18px;
   background: #fff;
+}
+
+.shot-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.shot-identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.shot-identity > div:last-child {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.shot-identity strong {
+  overflow: hidden;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shot-structure-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.shot-structure-actions > span {
+  margin-right: 2px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.shot-structure-actions .mini {
+  min-height: 34px;
+  padding: 7px 12px;
 }
 
 .shot-no {
@@ -1308,6 +1358,24 @@ textarea {
 .shot-main {
   display: grid;
   gap: 12px;
+}
+
+.shot-content-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.shot-content-head > span {
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.shot-content-head .rewrite-shot {
+  min-height: 34px;
+  border-color: var(--accent-strong);
+  color: var(--accent-strong);
 }
 
 .shot-main textarea {
@@ -1473,6 +1541,69 @@ textarea {
   color: var(--warn);
   background: var(--warn-bg);
   border-color: #d6b760;
+}
+
+.shot-review-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.shot-review-copy {
+  display: grid;
+  gap: 3px;
+}
+
+.shot-review-copy strong {
+  font-size: 13px;
+}
+
+.shot-review-copy span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.status-segmented {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(94px, 1fr));
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--wash);
+}
+
+.status-segmented button {
+  min-height: 34px;
+  padding: 7px 12px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.status-segmented button.active {
+  border-color: #b8c1b3;
+  background: #fff;
+  color: var(--soft-ink);
+  box-shadow: 0 4px 10px rgba(34, 44, 30, 0.08);
+}
+
+.status-segmented button.confirmed.active {
+  border-color: #7ebd67;
+  background: #eef8e8;
+  color: #347b22;
+}
+
+.status-segmented button.revise.active {
+  border-color: #e0bd65;
+  background: #fff7dc;
+  color: #876416;
 }
 
 .board-grid {
@@ -2063,12 +2194,6 @@ dialog::backdrop {
   gap: 10px;
   margin-right: auto;
   flex-wrap: wrap;
-}
-
-.shot-side .insert-shot {
-  border-style: dashed;
-  border-color: var(--accent-strong);
-  color: var(--accent-strong);
 }
 
 .panel-actions-bottom .primary {
@@ -3222,6 +3347,27 @@ select:focus {
 
   .review-batch-actions > button {
     flex: 1 1 150px;
+  }
+
+  .shot-card-header,
+  .shot-review-bar,
+  .shot-content-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .shot-structure-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .shot-structure-actions > span {
+    grid-column: 1 / -1;
+  }
+
+  .status-segmented {
+    width: 100%;
   }
 
   .pager {
