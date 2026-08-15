@@ -605,11 +605,12 @@ h1 { margin: 4px 0 0; font-size: 22px; line-height: 1.1; }
 .stage {
   margin: 18px 0;
   display: grid;
-  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  grid-template-columns: repeat(7, minmax(108px, 1fr));
   gap: 10px;
 }
 
-.stage span {
+.stage button {
+  appearance: none;
   position: relative;
   min-height: 58px;
   display: flex;
@@ -620,9 +621,13 @@ h1 { margin: 4px 0 0; font-size: 22px; line-height: 1.1; }
   background: rgba(255,255,255,.7);
   color: var(--muted);
   font-weight: 900;
+  font-family: inherit;
+  font-size: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
-.stage span::before {
+.stage button::before {
   content: "";
   width: 8px;
   height: 8px;
@@ -846,8 +851,7 @@ textarea {
 
 #summary {
   display: grid;
-  grid-template-columns: 72px 1fr;
-  gap: 8px;
+  gap: 10px;
   padding: 14px;
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -855,30 +859,61 @@ textarea {
   font-size: 13px;
 }
 
-#summary dt {
+.status-project-fields label {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.status-project-fields label > span:first-child {
   color: var(--muted);
   font-weight: 900;
 }
 
-#summary dd {
-  margin: 0;
-  word-break: break-word;
+.status-project-fields input,
+.status-project-fields textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  padding: 8px 9px;
+  border: 1px solid #dfe5dc;
+  border-radius: 9px;
+  background: #fff;
+  font-size: 12px;
+  line-height: 1.45;
 }
 
-.status-edit {
-  display: grid;
-  gap: 8px;
-  padding: 12px;
-  margin: 10px 0;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: rgba(255,255,255,.72);
+.status-project-fields textarea {
+  min-height: 64px;
+  resize: vertical;
 }
 
-.status-edit input {
-  min-height: 38px;
-  padding: 9px 11px;
-  border-radius: 12px;
+.status-project-fields .status-style-field {
+  align-items: start;
+}
+
+.status-project-fields .status-style-field > span:first-child {
+  padding-top: 9px;
+}
+
+.status-input-unit {
+  position: relative;
+  display: block;
+}
+
+.status-input-unit input {
+  padding-right: 30px;
+}
+
+.status-input-unit i {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  transform: translateY(-50%);
 }
 
 .notice {
@@ -1846,7 +1881,7 @@ dialog::backdrop {
 .hero,
 .panel,
 .status,
-.stage span {
+.stage button {
   border-color: var(--line-strong);
   background: #fff;
   box-shadow: none;
@@ -1896,7 +1931,7 @@ dialog::backdrop {
   gap: 24px;
 }
 
-.stage span {
+.stage button {
   min-height: 54px;
   border-width: 1.5px;
   border-radius: 12px;
@@ -1980,8 +2015,21 @@ dialog::backdrop {
   flex-wrap: wrap;
 }
 
+.analysis-duration-control,
 .shot-target-control {
   width: min(240px, 100%);
+}
+
+.analysis-duration-control {
+  width: min(320px, 100%);
+}
+
+.analysis-duration-control small {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .image-generate-bar label {
@@ -1990,6 +2038,57 @@ dialog::backdrop {
 
 .panel-actions-bottom .primary {
   min-width: 220px;
+}
+
+.list-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 18px 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fbfcfa;
+}
+
+.list-toolbar label,
+.pager {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.list-toolbar label > span,
+.pager > span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.list-toolbar select {
+  width: auto;
+  min-width: 128px;
+  min-height: 38px;
+  padding: 8px 34px 8px 12px;
+  border-color: #cfd8ca;
+  background: #fff;
+}
+
+.pager .ghost {
+  min-height: 38px;
+  padding: 8px 14px;
+  border-color: var(--accent-strong);
+  background: #fff;
+  color: var(--accent-strong);
+}
+
+.pager .ghost:disabled {
+  border-color: #dfe4dc;
+  color: #a4aaa0;
+  cursor: not-allowed;
+  opacity: .7;
 }
 
 .export-actions {
@@ -2667,7 +2766,7 @@ h1 {
   gap: 22px;
 }
 
-.stage span {
+.stage button {
   min-height: 60px;
   justify-content: center;
   border-color: #dfe5dc;
@@ -2676,11 +2775,11 @@ h1 {
   box-shadow: 0 8px 20px rgba(31, 38, 28, 0.04);
 }
 
-.stage span::before {
+.stage button::before {
   display: none;
 }
 
-.stage span svg {
+.stage button svg {
   width: 23px;
   height: 23px;
   margin-right: 10px;
@@ -2692,13 +2791,13 @@ h1 {
   flex: 0 0 auto;
 }
 
-.stage span b {
+.stage button b {
   font: inherit;
   font-weight: 850;
   color: #2a2f28;
 }
 
-.stage span:not(:last-child)::after {
+.stage button:not(:last-child)::after {
   content: "---->";
   position: absolute;
   right: -38px;
@@ -2707,11 +2806,13 @@ h1 {
   letter-spacing: 0;
 }
 
-.stage span:nth-child(1) { color: var(--accent-strong); }
-.stage span:nth-child(2) { color: #eba51e; }
-.stage span:nth-child(3) { color: var(--blue); }
-.stage span:nth-child(4) { color: var(--purple); }
-.stage span:nth-child(5) { color: var(--orange); }
+.stage button:nth-child(1) { color: var(--accent-strong); }
+.stage button:nth-child(2) { color: #5b9f3b; }
+.stage button:nth-child(3) { color: #eba51e; }
+.stage button:nth-child(4) { color: var(--blue); }
+.stage button:nth-child(5) { color: var(--purple); }
+.stage button:nth-child(6) { color: var(--orange); }
+.stage button:nth-child(7) { color: #4f8070; }
 
 .stage .active {
   border-color: #a7d990;
@@ -2955,7 +3056,7 @@ select:focus {
     gap: 10px;
   }
 
-  .stage span:not(:last-child)::after {
+  .stage button:not(:last-child)::after {
     display: none;
   }
 
@@ -2971,6 +3072,17 @@ select:focus {
 
   .top-actions {
     width: 100%;
+  }
+
+  .stage {
+    display: flex;
+    overflow-x: auto;
+    padding-bottom: 6px;
+    scrollbar-width: thin;
+  }
+
+  .stage button {
+    flex: 0 0 170px;
   }
 
   .top-actions .ghost {
@@ -2997,5 +3109,19 @@ select:focus {
     bottom: auto;
     width: min(220px, 70%);
     margin: 8px auto 0;
+  }
+
+  .list-toolbar,
+  .pager {
+    align-items: stretch;
+  }
+
+  .list-toolbar {
+    flex-direction: column;
+  }
+
+  .pager {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
   }
 }

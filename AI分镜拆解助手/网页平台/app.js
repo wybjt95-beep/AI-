@@ -28,6 +28,11 @@ const state = {
   boardsGenerated: false,
   hydrating: false,
   saveTimer: 0,
+  workbenchPanel: "import",
+  shotPage: 1,
+  shotPageSize: 6,
+  boardPage: 1,
+  boardPageSize: 6,
 };
 
 const $ = (id) => document.querySelector(id);
@@ -35,10 +40,13 @@ const els = {
   loginPage: $("#loginPage"), platformShell: $("#platformShell"),
   dashboard: $("#dashboard"), setup: $("#setup"), workbench: $("#workbench"),
   projectList: $("#projectList"),
-  projectName: $("#projectName"), projectType: $("#projectType"), duration: $("#duration"), workbenchDuration: $("#workbenchDuration"), aspect: $("#aspect"), style: $("#style"), platform: $("#platform"),
-  scriptInput: $("#scriptInput"), globalNotes: $("#globalNotes"), shotTarget: $("#shotTarget"),
+  projectName: $("#projectName"), projectType: $("#projectType"), duration: $("#duration"), aspect: $("#aspect"), style: $("#style"), platform: $("#platform"),
+  workbenchName: $("#workbenchName"), workbenchType: $("#workbenchType"), workbenchDuration: $("#workbenchDuration"), workbenchAspect: $("#workbenchAspect"), workbenchStyle: $("#workbenchStyle"), workbenchPlatform: $("#workbenchPlatform"),
+  scriptInput: $("#scriptInput"), globalNotes: $("#globalNotes"), shotTarget: $("#shotTarget"), analysisDuration: $("#analysisDuration"), durationSuggestionHint: $("#durationSuggestionHint"),
   uploadBox: $("#uploadBox"), fileInput: $("#fileInput"), fileStatus: $("#fileStatus"),
   analysisGrid: $("#analysisGrid"), shots: $("#shots"), boards: $("#boards"),
+  shotPageSize: $("#shotPageSize"), shotPrev: $("#shotPrev"), shotNext: $("#shotNext"), shotPageInfo: $("#shotPageInfo"),
+  boardPageSize: $("#boardPageSize"), boardPrev: $("#boardPrev"), boardNext: $("#boardNext"), boardPageInfo: $("#boardPageInfo"),
   shotCount: $("#shotCount"), confirmedCount: $("#confirmedCount"), boardCount: $("#boardCount"), summary: $("#summary"), notice: $("#notice"),
   boardStyle: $("#boardStyle"), tone: $("#tone"), visualStyle: $("#visualStyle"), creativity: $("#creativity"),
   creativityText: $("#creativityText"), creativityValue: $("#creativityValue"), apiDialog: $("#apiDialog"), toast: $("#toast"),
@@ -105,10 +113,10 @@ function requestedShotCount() {
   return Math.min(MAX_SHOT_COUNT, Math.max(1, Math.round(value)));
 }
 
-function suggestShotCount() {
+function suggestShotCount(durationOverride = 0) {
   const script = els.scriptInput.value.trim();
   const units = scriptUnits(script, MAX_SHOT_COUNT);
-  const duration = readProjectDuration();
+  const duration = Number(durationOverride) > 0 ? Number(durationOverride) : readProjectDuration();
   const entityCount = ["people", "locations", "props", "product"].reduce((sum, key) => sum + (state.detected[key] || []).length, 0);
   let min = 4;
   let max = 8;
@@ -138,10 +146,52 @@ function suggestShotCount() {
   return Math.min(MAX_SHOT_COUNT, Math.max(min, Math.min(max + densityBonus, blended)));
 }
 
-function applySuggestedShotCount() {
-  const count = suggestShotCount();
+function applySuggestedShotCount(durationOverride = 0) {
+  const count = suggestShotCount(durationOverride);
   if (els.shotTarget) els.shotTarget.value = count;
   return count;
+}
+
+function scriptCharacterCount(text) {
+  return [...String(text || "")].filter((char) => /[\p{L}\p{N}]/u.test(char)).length;
+}
+
+function roundSuggestedDuration(value) {
+  const duration = Math.max(5, Number(value) || 5);
+  const step = duration <= 20 ? 1 : duration <= 90 ? 5 : duration <= 300 ? 10 : duration <= 900 ? 30 : 60;
+  return Math.max(5, Math.round(duration / step) * step);
+}
+
+function suggestProjectDuration() {
+  const script = els.scriptInput.value.trim();
+  if (!script) return readProjectDuration();
+  const characters = scriptCharacterCount(script);
+  const units = scriptUnits(script, 600);
+  const spokenText = [...(state.detected.dialogue || []), ...(state.detected.narration || [])].join("");
+  const spokenSeconds = scriptCharacterCount(spokenText) / 3.6;
+  const contentSeconds = characters / 4.1 * 1.12;
+  const visualSeconds = units.length * 2.6;
+  const locationExtra = Math.max(0, (state.detected.locations || []).length - 1) * 1.5;
+  return roundSuggestedDuration(Math.max(spokenSeconds * 1.15, contentSeconds, visualSeconds) + locationExtra);
+}
+
+function applySuggestedProjectDuration(value = 0) {
+  const duration = Number(value) > 0 ? roundSuggestedDuration(value) : suggestProjectDuration();
+  els.analysisDuration.value = duration;
+  const characters = scriptCharacterCount(els.scriptInput.value);
+  const units = scriptUnits(els.scriptInput.value, 600).length;
+  els.durationSuggestionHint.textContent = `根据约 ${characters} 字、${units} 个语义段及已识别的台词、旁白和场景估算，可直接修改。`;
+  return duration;
+}
+
+function applyAnalysisDurationToProject() {
+  const value = Number(els.analysisDuration?.value || 0);
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  const duration = Math.max(1, Math.round(value));
+  state.project.duration = duration;
+  syncDurationInputs(duration);
+  renderSummary();
+  return duration;
 }
 
 function normalizeCreativityValue(value, scale = 100) {
@@ -178,6 +228,26 @@ function syncDurationInputs(value) {
   const duration = Number.isFinite(Number(value)) ? Math.max(1, Math.round(Number(value))) : 30;
   if (els.duration) els.duration.value = duration;
   if (els.workbenchDuration) els.workbenchDuration.value = duration;
+}
+
+function setSyncedValue(input, value) {
+  if (!input || input === document.activeElement) return;
+  const next = String(value ?? "");
+  if (input.value !== next) input.value = next;
+}
+
+function syncProjectInputs(project = state.project) {
+  setSyncedValue(els.projectName, project.name);
+  setSyncedValue(els.projectType, project.type);
+  setSyncedValue(els.aspect, project.aspect);
+  setSyncedValue(els.style, project.style);
+  setSyncedValue(els.platform, project.platform);
+  setSyncedValue(els.workbenchName, project.name);
+  setSyncedValue(els.workbenchType, project.type);
+  setSyncedValue(els.workbenchAspect, project.aspect);
+  setSyncedValue(els.workbenchStyle, project.style);
+  setSyncedValue(els.workbenchPlatform, project.platform);
+  syncDurationInputs(project.duration);
 }
 
 function syncChoiceButtons(targetId) {
@@ -342,6 +412,7 @@ function projectSnapshot() {
     script: els.scriptInput.value,
     globalNotes: els.globalNotes.value,
     shotTarget: els.shotTarget.value,
+    analysisDuration: els.analysisDuration.value,
     detected: normalizeAnalysisData(state.detected),
     includeDialogue: true,
     includeNarration: true,
@@ -354,6 +425,9 @@ function projectSnapshot() {
     overallVisualStyle,
     creativity: els.creativity.value,
     creativityScale: 100,
+    workbenchPanel: state.workbenchPanel,
+    shotPageSize: state.shotPageSize,
+    boardPageSize: state.boardPageSize,
   };
 }
 
@@ -463,10 +537,21 @@ function restoreProject(record) {
     status: shot.status || "待确认",
   }));
   state.boardsGenerated = Boolean(record.boardsGenerated);
+  state.workbenchPanel = ["import", "analysis", "review", "boards", "export"].includes(record.workbenchPanel) ? record.workbenchPanel : (state.shots.length ? "review" : "import");
+  state.shotPage = 1;
+  state.boardPage = 1;
+  state.shotPageSize = [4, 6, 10, 20, 50].includes(Number(record.shotPageSize)) ? Number(record.shotPageSize) : 6;
+  state.boardPageSize = [4, 6, 10, 20, 50].includes(Number(record.boardPageSize)) ? Number(record.boardPageSize) : 6;
+  els.shotPageSize.value = String(state.shotPageSize);
+  els.boardPageSize.value = String(state.boardPageSize);
   applyProject(state.project);
   els.scriptInput.value = record.script || "";
   els.globalNotes.value = record.globalNotes || "";
   els.shotTarget.value = record.shotTarget || "";
+  els.analysisDuration.value = record.analysisDuration || "";
+  els.durationSuggestionHint.textContent = record.analysisDuration
+    ? "已恢复上次的建议时长，可继续修改。"
+    : "根据脚本内容估算，不会在分析完成时直接覆盖原时长。";
   els.boardStyle.value = record.boardStyle || "";
   els.tone.value = tagText(record.overallColorTone || record.tone || DEFAULT_TONE, 3) || DEFAULT_TONE;
   els.visualStyle.value = tagText(record.overallVisualStyle || record.visualStyle || state.project.style || DEFAULT_VISUAL_STYLE, 3) || DEFAULT_VISUAL_STYLE;
@@ -492,10 +577,19 @@ function resetWorkspace() {
   state.includeNarration = true;
   state.shots = [];
   state.boardsGenerated = false;
+  state.workbenchPanel = "import";
+  state.shotPage = 1;
+  state.boardPage = 1;
+  state.shotPageSize = 6;
+  state.boardPageSize = 6;
+  els.shotPageSize.value = "6";
+  els.boardPageSize.value = "6";
   applyProject(state.project);
   els.scriptInput.value = "";
   els.globalNotes.value = "";
 	  els.shotTarget.value = "";
+	  els.analysisDuration.value = "";
+	  els.durationSuggestionHint.textContent = "根据脚本内容估算，不会在分析完成时直接覆盖原时长。";
 	  els.boardStyle.value = "";
 	  els.tone.value = DEFAULT_TONE;
 	  els.visualStyle.value = DEFAULT_VISUAL_STYLE;
@@ -525,34 +619,51 @@ function setScreen(screen) {
   els.setup.classList.toggle("hidden", isLogin || nextScreen !== "setup");
   els.workbench.classList.toggle("hidden", isLogin || nextScreen !== "workbench");
   if (nextScreen === "dashboard") renderDashboard();
-  document.querySelectorAll(".stage span").forEach((node, i) => {
-    node.classList.toggle("active", (nextScreen === "dashboard" && i === 0) || (nextScreen === "workbench" && i > 0));
+  setWorkbenchPanel(state.workbenchPanel, false);
+}
+
+function setWorkbenchPanel(panel, shouldSave = true) {
+  const allowed = ["import", "analysis", "review", "boards", "export"];
+  const next = allowed.includes(panel) ? panel : "import";
+  state.workbenchPanel = next;
+  document.querySelectorAll("[data-workbench-panel]").forEach((section) => {
+    section.classList.toggle("hidden", section.dataset.workbenchPanel !== next);
   });
+  document.querySelectorAll("[data-workbench-step]").forEach((button) => {
+    const active = state.screen === "dashboard"
+      ? button.dataset.workbenchStep === "dashboard"
+      : state.screen === "setup"
+        ? button.dataset.workbenchStep === "setup"
+        : state.screen === "workbench" && button.dataset.workbenchStep === next;
+    button.classList.toggle("active", active);
+    button.toggleAttribute("aria-current", active);
+  });
+  if (shouldSave && state.screen === "workbench") scheduleAutoSave();
 }
 
 function syncProjectFromForm() {
+	  const inWorkbench = state.screen === "workbench";
+	  const source = inWorkbench
+	    ? { name: els.workbenchName, type: els.workbenchType, aspect: els.workbenchAspect, style: els.workbenchStyle, platform: els.workbenchPlatform }
+	    : { name: els.projectName, type: els.projectType, aspect: els.aspect, style: els.style, platform: els.platform };
 	  state.project = {
-	    name: els.projectName.value || "未命名项目",
-	    type: els.projectType.value || "未填写",
+	    name: source.name.value.trim() || "未命名项目",
+	    type: source.type.value.trim() || "未填写",
 	    duration: readProjectDuration(),
-	    aspect: els.aspect.value || "未填写",
-	    style: tagText(els.style.value) || "未填写",
-	    platform: els.platform.value || "未填写",
+	    aspect: source.aspect.value.trim() || "未填写",
+	    style: tagText(source.style.value) || "未填写",
+	    platform: source.platform.value.trim() || "未填写",
 	  };
-	  syncDurationInputs(state.project.duration);
-	  if (!els.visualStyle.value.trim() && els.style.value) els.visualStyle.value = tagText(els.style.value, 3);
+	  syncProjectInputs(state.project);
+	  if (!els.visualStyle.value.trim() && source.style.value) els.visualStyle.value = tagText(source.style.value, 3);
 	  syncAllChoiceButtons();
 	  renderLookTagEditors();
 	  renderSummary();
 	}
 
 function applyProject(project) {
-  els.projectName.value = project.name || "";
-  els.projectType.value = project.type || "";
-  syncDurationInputs(project.duration || 30);
-	  els.aspect.value = project.aspect || "";
-	  els.style.value = project.style || "";
-	  els.platform.value = project.platform || "";
+	  state.project = { ...DEFAULT_PROJECT, ...project };
+	  syncProjectInputs(state.project);
 	  syncProjectFromForm();
 	  syncAllChoiceButtons();
 	  renderLookTagEditors();
@@ -574,9 +685,7 @@ function detectTerms(script) {
 
 function renderSummary() {
   const p = state.project;
-  els.summary.innerHTML = [
-    ["项目", p.name], ["类型", p.type], ["时长", `${p.duration}s`], ["画幅", p.aspect], ["风格", p.style], ["平台", p.platform],
-  ].map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v || "未填写")}</dd>`).join("");
+  syncProjectInputs(p);
   const confirmed = state.shots.filter((s) => s.status === "已确认").length;
   els.shotCount.textContent = state.shots.length;
   els.confirmedCount.textContent = confirmed;
@@ -940,6 +1049,7 @@ function applyGeneratedLook(data) {
 }
 
 async function splitStoryboard() {
+  applyAnalysisDurationToProject();
   syncProjectFromForm();
   syncAnalysisFromInputs();
   const script = els.scriptInput.value.trim();
@@ -971,9 +1081,12 @@ async function splitStoryboard() {
     showToast("后端未连接，已使用前端本地演示拆解。");
   }
   state.boardsGenerated = false;
+  state.shotPage = 1;
+  state.boardPage = 1;
   renderShots();
   renderBoards();
   renderSummary();
+  setWorkbenchPanel("review");
   saveCurrentProject();
   splitButton.disabled = false;
   splitButton.textContent = buttonText;
@@ -1166,12 +1279,30 @@ function referenceRow(shot, index) {
   </div>`;
 }
 
+function pageSlice(items, requestedPage, pageSize) {
+  const size = Math.max(1, Number(pageSize) || 6);
+  const totalPages = Math.max(1, Math.ceil(items.length / size));
+  const page = Math.min(totalPages, Math.max(1, Number(requestedPage) || 1));
+  const start = (page - 1) * size;
+  return { page, totalPages, start, items: items.slice(start, start + size) };
+}
+
+function updatePager(info, previous, next, page, totalPages, totalItems, unit) {
+  info.textContent = `第 ${page} / ${totalPages} 页 · 共 ${totalItems} ${unit}`;
+  previous.disabled = page <= 1 || totalItems === 0;
+  next.disabled = page >= totalPages || totalItems === 0;
+}
+
 function renderShots() {
+  const view = pageSlice(state.shots, state.shotPage, state.shotPageSize);
+  state.shotPage = view.page;
+  updatePager(els.shotPageInfo, els.shotPrev, els.shotNext, view.page, view.totalPages, state.shots.length, "个镜头");
   if (!state.shots.length) {
     els.shots.innerHTML = `<div class="empty">确认剧本分析后，这里会出现分镜卡片。</div>`;
     return;
   }
-  els.shots.innerHTML = state.shots.map((shot, i) => {
+  els.shots.innerHTML = view.items.map((shot, localIndex) => {
+    const i = view.start + localIndex;
     const cls = shot.status === "已确认" ? "ok" : shot.status === "需修改" ? "revise" : "";
     return `<article class="shot-card" data-index="${i}">
       <div class="shot-no">${shot.no}</div>
@@ -1413,12 +1544,16 @@ function boardSvg(shot, index) {
 
 function renderBoards() {
   const confirmed = state.shots.filter((shot) => shot.status === "已确认");
+  const view = pageSlice(confirmed, state.boardPage, state.boardPageSize);
+  state.boardPage = view.page;
+  updatePager(els.boardPageInfo, els.boardPrev, els.boardNext, view.page, view.totalPages, confirmed.length, "张");
   if (!state.boardsGenerated || !confirmed.length) {
     els.boards.innerHTML = `<div class="empty">确认分镜后点击生成分镜图。</div>`;
     renderSummary();
     return;
   }
-  els.boards.innerHTML = confirmed.map((shot, i) => {
+  els.boards.innerHTML = view.items.map((shot, localIndex) => {
+    const i = view.start + localIndex;
     const hasAiImage = Boolean(shot.boardImage);
     const warning = shot.boardWarning || (!hasAiImage ? "图片未生成。请检查图片模型配置后重新点击“生成分镜图”。" : "");
     const sourceTag = hasAiImage ? "真实生图" : "未生成";
@@ -1641,7 +1776,9 @@ async function generateBoards() {
     showToast("图片生成失败，请检查API和图片模型。");
   } finally {
     state.boardsGenerated = true;
+    state.boardPage = 1;
     renderBoards();
+    setWorkbenchPanel("boards");
     saveCurrentProject();
     button.disabled = false;
     button.textContent = text;
@@ -1691,9 +1828,10 @@ async function analyzeScript() {
   try {
     const data = await requestScriptAnalysis();
     state.detected = normalizeAnalysisData(data.analysis);
-    const count = applySuggestedShotCount();
-    if (data.warning) showToast(`${data.warning} 已建议拆成 ${count} 个镜头。`);
-    else showToast(data.source === "ai" ? `AI 已完成剧本分析，建议拆成 ${count} 个镜头，可修改后再拆解。` : `已使用后端演示模式分析剧本，建议拆成 ${count} 个镜头。`);
+    const suggestedDuration = applySuggestedProjectDuration(data.suggestedDuration);
+    const count = applySuggestedShotCount(suggestedDuration);
+    if (data.warning) showToast(`${data.warning} 建议时长 ${suggestedDuration} 秒、拆成 ${count} 个镜头。`);
+    else showToast(data.source === "ai" ? `AI 已完成分析，建议时长 ${suggestedDuration} 秒、拆成 ${count} 个镜头，可修改。` : `已完成演示分析，建议时长 ${suggestedDuration} 秒、拆成 ${count} 个镜头。`);
   } catch (error) {
     console.warn(error);
     if (isAuthError(error)) {
@@ -1707,11 +1845,13 @@ async function analyzeScript() {
       return;
     }
     state.detected = detectTerms(script);
-    const count = applySuggestedShotCount();
-    showToast(`后端未连接，已使用前端本地分析，建议拆成 ${count} 个镜头。`);
+    const suggestedDuration = applySuggestedProjectDuration();
+    const count = applySuggestedShotCount(suggestedDuration);
+    showToast(`已使用前端本地分析，建议时长 ${suggestedDuration} 秒、拆成 ${count} 个镜头。`);
   }
   renderAnalysis();
   renderSummary();
+  setWorkbenchPanel("analysis");
   saveCurrentProject();
   analyzeButton.disabled = false;
   analyzeButton.textContent = buttonText;
@@ -1723,6 +1863,7 @@ function openSample() {
   els.scriptInput.value = sampleScript;
   els.globalNotes.value = "";
   els.shotTarget.value = "";
+  els.analysisDuration.value = "";
   els.tone.value = DEFAULT_TONE;
   els.visualStyle.value = DEFAULT_VISUAL_STYLE;
 	  els.creativity.value = "60";
@@ -1732,6 +1873,9 @@ function openSample() {
 	  state.detected = detectTerms(sampleScript);
   state.shots = [];
   state.boardsGenerated = false;
+  state.shotPage = 1;
+  state.boardPage = 1;
+  state.workbenchPanel = "import";
   renderAnalysis();
   renderShots();
   renderBoards();
@@ -1749,6 +1893,7 @@ function addShot() {
     product: first(state.detected.product, "待补充产品"), time: first(state.detected.times, "待补充时间段"),
     transition: i === 0 ? "开场建立" : "直切承接", dialogue: "无台词", narration: "无旁白", focus: "待补充", status: "待确认", refName: "", refData: "", refMeta: null,
   });
+  state.shotPage = Math.ceil(state.shots.length / state.shotPageSize);
   renderShots(); renderSummary(); saveCurrentProject();
 }
 
@@ -1833,6 +1978,26 @@ async function hydrateMissingReferenceMeta() {
 
 function bindEvents() {
   $("#apiBtn").addEventListener("click", () => { els.apiDialog.showModal(); loadApiConfig(); });
+  document.querySelector(".stage").addEventListener("click", (event) => {
+    const step = event.target.closest("[data-workbench-step]")?.dataset.workbenchStep;
+    if (!step) return;
+    if (step === "dashboard") {
+      saveCurrentProject();
+      setScreen("dashboard");
+      return;
+    }
+    if (step === "setup") {
+      saveCurrentProject();
+      startNewProjectSetup();
+      return;
+    }
+    if (state.screen === "setup") {
+      state.projectId = state.projectId || newProjectId();
+      syncProjectFromForm();
+    }
+    setScreen("workbench");
+    setWorkbenchPanel(step);
+  });
   document.addEventListener("click", (event) => {
     const button = event.target.closest(".choice-pill[data-choice-value]");
     if (button) handleChoiceButton(button);
@@ -1879,15 +2044,31 @@ function bindEvents() {
   $("#toDashboard").addEventListener("click", () => { saveCurrentProject(); setScreen("dashboard"); });
   $("#newProject").addEventListener("click", startNewProjectSetup);
   $("#backDashboard").addEventListener("click", () => setScreen("dashboard"));
-  $("#createProject").addEventListener("click", () => { state.projectId = newProjectId(); syncProjectFromForm(); setScreen("workbench"); saveCurrentProject(); });
+  $("#createProject").addEventListener("click", () => { state.projectId = newProjectId(); syncProjectFromForm(); state.workbenchPanel = "import"; setScreen("workbench"); saveCurrentProject(); });
   $("#sampleBtn").addEventListener("click", openSample);
   $("#analyze").addEventListener("click", analyzeScript);
   $("#split").addEventListener("click", splitStoryboard);
   $("#addShot").addEventListener("click", addShot);
   $("#confirmAll").addEventListener("click", () => { state.shots.forEach((s) => s.status = "已确认"); state.boardsGenerated = false; renderShots(); renderBoards(); saveCurrentProject(); });
   $("#generate").addEventListener("click", generateBoards);
+  els.shotPageSize.addEventListener("change", () => {
+    state.shotPageSize = Number(els.shotPageSize.value) || 6;
+    state.shotPage = 1;
+    renderShots();
+    scheduleAutoSave();
+  });
+  els.shotPrev.addEventListener("click", () => { state.shotPage -= 1; renderShots(); });
+  els.shotNext.addEventListener("click", () => { state.shotPage += 1; renderShots(); });
+  els.boardPageSize.addEventListener("change", () => {
+    state.boardPageSize = Number(els.boardPageSize.value) || 6;
+    state.boardPage = 1;
+    renderBoards();
+    scheduleAutoSave();
+  });
+  els.boardPrev.addEventListener("click", () => { state.boardPage -= 1; renderBoards(); });
+  els.boardNext.addEventListener("click", () => { state.boardPage += 1; renderBoards(); });
   els.boardStyle.addEventListener("change", () => changeBoardStyle(els.boardStyle.value));
-  $("#clearScript").addEventListener("click", () => { els.scriptInput.value = ""; state.shots = []; state.boardsGenerated = false; renderShots(); renderBoards(); saveCurrentProject(); });
+  $("#clearScript").addEventListener("click", () => { els.scriptInput.value = ""; state.shots = []; state.boardsGenerated = false; state.shotPage = 1; state.boardPage = 1; renderShots(); renderBoards(); saveCurrentProject(); });
   $("#uploadTab").addEventListener("click", () => { $("#uploadTab").classList.add("active"); $("#directTab").classList.remove("active"); els.uploadBox.classList.remove("hidden"); });
   $("#directTab").addEventListener("click", () => { $("#directTab").classList.add("active"); $("#uploadTab").classList.remove("active"); els.uploadBox.classList.add("hidden"); });
   els.fileInput.addEventListener("change", async () => {
@@ -1900,7 +2081,11 @@ function bindEvents() {
       state.detected = emptyDetected();
       state.shots = [];
       state.boardsGenerated = false;
+      state.shotPage = 1;
+      state.boardPage = 1;
       els.shotTarget.value = "";
+      els.analysisDuration.value = "";
+      els.durationSuggestionHint.textContent = "根据脚本内容估算，不会在分析完成时直接覆盖原时长。";
       renderAnalysis();
       renderShots();
       renderBoards();
@@ -1922,8 +2107,20 @@ function bindEvents() {
   els.scriptInput.addEventListener("input", scheduleAutoSave);
   els.globalNotes.addEventListener("input", scheduleAutoSave);
   els.shotTarget.addEventListener("input", scheduleAutoSave);
+  els.analysisDuration.addEventListener("input", () => {
+    const duration = applyAnalysisDurationToProject();
+    if (duration) applySuggestedShotCount(duration);
+    scheduleAutoSave();
+  });
   els.creativity.addEventListener("input", () => { updateCreativityUi(); scheduleAutoSave(); });
-  els.workbenchDuration.addEventListener("input", () => { syncProjectFromForm(); scheduleAutoSave(); });
+  ["workbenchName", "workbenchType", "workbenchDuration", "workbenchAspect", "workbenchStyle", "workbenchPlatform"].forEach((id) => {
+    $(`#${id}`).addEventListener("input", () => { syncProjectFromForm(); scheduleAutoSave(); });
+  });
+  els.workbenchStyle.addEventListener("blur", () => {
+    normalizeTagInput(els.workbenchStyle);
+    syncProjectFromForm();
+    scheduleAutoSave();
+  });
   els.analysisGrid.addEventListener("input", () => { syncAnalysisFromInputs(); scheduleAutoSave(); });
   els.analysisGrid.addEventListener("change", () => { syncAnalysisFromInputs(); scheduleAutoSave(); });
   els.shots.addEventListener("input", (event) => {
