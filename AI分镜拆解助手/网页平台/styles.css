@@ -3111,9 +3111,15 @@ h1 {
 }
 
 .saved-card .project-art {
-  right: 8px;
-  bottom: 2px;
-  width: 36%;
+  right: 2px;
+  bottom: -4px;
+  width: 41%;
+}
+
+.saved-card .category-art {
+  max-height: 178px;
+  object-fit: contain;
+  object-position: right bottom;
 }
 
 .tag {

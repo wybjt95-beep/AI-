@@ -15,6 +15,74 @@ const DEFAULT_PROJECT = {
   platform: "抖音",
 };
 const MAX_SHOT_COUNT = 1200;
+const PROJECT_ART_RULES = [
+  {
+    id: "automotive",
+    label: "汽车出行",
+    src: "./assets/ui/car-shoot.png",
+    keywords: ["新能源汽车", "新能源车", "电动车", "汽车", "车辆", "车企", "驾驶", "出行", "通勤"],
+  },
+  {
+    id: "food",
+    label: "餐饮美食",
+    src: "./assets/project-categories/food.png",
+    keywords: ["餐饮", "美食", "食品", "饮品", "咖啡", "奶茶", "烘焙", "甜品", "餐厅", "探店", "酒水", "小吃"],
+  },
+  {
+    id: "ecommerce",
+    label: "电商零售",
+    src: "./assets/project-categories/ecommerce.png",
+    keywords: ["电商", "购物", "商城", "淘宝", "天猫", "京东", "直播带货", "带货", "种草", "开箱", "网店", "促销", "产品详情"],
+  },
+  {
+    id: "factory",
+    label: "工业制造",
+    src: "./assets/project-categories/factory.png",
+    keywords: ["工厂", "工业", "制造", "机械", "工程", "生产线", "智能制造", "重工业", "车间", "机器人", "工业纪录片"],
+  },
+  {
+    id: "home-life",
+    label: "家庭生活",
+    src: "./assets/project-categories/home-life.png",
+    keywords: ["家庭", "家居", "家电", "居家", "客厅", "厨房", "母婴", "亲子", "温馨家庭", "日常生活", "生活方式"],
+  },
+  {
+    id: "beauty",
+    label: "美妆时尚",
+    src: "./assets/project-categories/beauty.png",
+    keywords: ["美妆", "护肤", "化妆", "彩妆", "口红", "香水", "时尚", "服装", "穿搭", "珠宝", "女性品牌"],
+  },
+  {
+    id: "corporate",
+    label: "企业宣传",
+    src: "./assets/project-categories/corporate.png",
+    keywords: ["企业宣传", "企业片", "企业", "公司", "品牌形象", "品牌宣传", "招商", "商务", "办公", "采访", "发布会", "宣传片"],
+  },
+  {
+    id: "digital",
+    label: "数码科技",
+    src: "./assets/project-categories/digital.png",
+    keywords: ["数码", "科技", "软件", "app", "ai", "人工智能", "手机", "电脑", "电子产品", "互联网", "智能设备", "科技产品"],
+  },
+  {
+    id: "travel",
+    label: "文旅旅行",
+    src: "./assets/project-categories/travel.png",
+    keywords: ["文旅", "旅游", "旅行", "景区", "风景", "城市宣传", "文化旅游", "酒店", "航空", "公路", "度假", "户外"],
+  },
+  {
+    id: "concert",
+    label: "演出活动",
+    src: "./assets/project-categories/concert.png",
+    keywords: ["演唱会", "音乐节", "音乐", "舞台", "歌手", "乐队", "演出", "综艺", "现场活动", "活动预热"],
+  },
+  {
+    id: "knowledge",
+    label: "知识科普",
+    src: "./assets/project-categories/knowledge.png",
+    keywords: ["知识", "教育", "科普", "课程", "教程", "学校", "培训", "学习", "实验", "科学", "文化", "知识分享"],
+  },
+];
 
 const state = {
   projectId: "",
@@ -482,10 +550,38 @@ function scheduleAutoSave() {
   state.saveTimer = setTimeout(saveCurrentProject, 500);
 }
 
+function projectArtwork(project = {}) {
+  const fields = [
+    { text: String(project.name || "").toLowerCase(), weight: 7 },
+    { text: String(project.type || "").toLowerCase(), weight: 3 },
+    { text: String(project.style || "").toLowerCase(), weight: 2 },
+  ];
+  let bestRule = null;
+  let bestScore = 0;
+  PROJECT_ART_RULES.forEach((rule) => {
+    let score = 0;
+    fields.forEach(({ text, weight }) => {
+      if (!text) return;
+      rule.keywords.forEach((keyword) => {
+        if (text.includes(String(keyword).toLowerCase())) score += weight;
+      });
+    });
+    if (score > bestScore) {
+      bestScore = score;
+      bestRule = rule;
+    }
+  });
+  return bestRule || {
+    id: "storyboard",
+    label: "通用分镜",
+    src: "./assets/ui/storybook.png",
+  };
+}
+
 function projectPreview(record) {
   const updated = record.updatedAt ? new Date(record.updatedAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "未记录";
   const count = Array.isArray(record.shots) ? record.shots.length : 0;
-  const art = count > 0 ? "./assets/ui/director-chair.png" : "./assets/ui/storybook.png";
+  const art = projectArtwork(record.project);
   return `<article class="project-card saved-card">
     <span class="tag">${esc(record.project?.type || "项目")}</span>
     <h4>${esc(record.project?.name || "未命名项目")}</h4>
@@ -494,7 +590,7 @@ function projectPreview(record) {
       <button class="text-btn edit-btn" data-open-project="${esc(record.id)}">继续编辑</button>
       <button class="text-btn delete-btn" data-delete-project="${esc(record.id)}">删除</button>
     </div>
-    <img class="project-art" src="${art}" alt="" />
+    <img class="project-art category-art" src="${art.src}" alt="${esc(art.label)}项目插画" data-art-category="${art.id}" loading="lazy" />
   </article>`;
 }
 
